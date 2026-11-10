@@ -1,0 +1,13 @@
+{
+  "name": "Rutas MTB",
+  "short_name": "Rutas MTB",
+  "start_url": "./rutas-mtb.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2e7d32",
+  "lang": "es",
+  "icons": [
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
