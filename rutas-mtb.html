@@ -359,7 +359,7 @@
   }
 
   // ---------- Configuración ----------
-  const APP_VERSION = '2026-11-13 · v9';
+  const APP_VERSION = '2026-11-13 · v10';
   const CONFIG = {
     center: [36.7213, -4.4214],            // Málaga
     zoom: 11,
@@ -396,9 +396,10 @@
   //  · trekking/gravel: avoid_unsafe, consider_traffic, consider_noise, consider_town
   const ROAD_TIERS = {
     mtb:   ['profile:road_factor=0&profile:use_sidewalks=false&profile:mj_rd_penalty=1.5&profile:isbike_reduce=1', 'profile:road_factor=0&profile:use_sidewalks=false'],
-    other: ['profile:avoid_unsafe=true&profile:consider_traffic=true&profile:consider_noise=true&profile:consider_town=true', 'profile:avoid_unsafe=true']
+    trekking: ['profile:avoid_unsafe=true&profile:consider_traffic=true&profile:consider_noise=true&profile:consider_town=true', 'profile:avoid_unsafe=true']
   };
-  const roadExtra = pf => ($('avoidRoads').value === 'normal' ? [] : ROAD_TIERS[/^custom/.test(pf) ? 'mtb' : 'other']);
+  // gravel y otros perfiles: no se les manda nada (BRouter responde 500 si el parámetro no existe)
+  const roadExtra = pf => ($('avoidRoads').value === 'normal' ? [] : /^custom/.test(pf) ? ROAD_TIERS.mtb : pf === 'trekking' ? ROAD_TIERS.trekking : []);
   const joinExtra = (a, b) => [a, b].filter(Boolean).join('&');
 
   const SURF = {
@@ -834,8 +835,7 @@
 
   // ---------- BRouter ----------
   // Servidor saturado: «403 Please, retry later!», «400 operation killed by thread-priority-watchdog», 429, 502-504
-  const isBusy = (status, text) => /retry later|thread-priority-watchdog|operation killed|too many/i.test(text || '') || [429, 502, 503, 504].includes(status) ||
-    (status === 500 && (text || '').trim().length < 5);   // 500 sin mensaje = servidor caído por saturación, no un error de la ruta
+  const isBusy = (status, text) => /retry later|thread-priority-watchdog|operation killed|too many/i.test(text || '') || [429, 502, 503, 504].includes(status);
 
   // ---------- OpenRouteService (motor alternativo, con clave gratuita) ----------
   // Se usa como si fuera un perfil más de BRouter: perfil «ors:cycling-mountain» y extra «steep=N».
@@ -1151,7 +1151,6 @@
     } catch (e) {
       if (/^No se pudo contactar/.test(e.message) || e.transient) throw e;   // red o servidor ocupado: no se marca el perfil como malo
       if (e.ferry) { profCheck.ok.add(key); return true; }                  // el tramo de prueba cayó en el mar: el perfil sí funciona
-      if (/respondió 5\d\d/.test(e.message)) return true;                  // error del servidor: no dice nada de los parámetros (se usan)
       profCheck.bad.add(key); profCheck.why[key] = e.message;
       return false;
     }
@@ -1166,10 +1165,10 @@
     try {
       resp = await fetch(CONFIG.brouterUrl + '/profile', { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: text });
     } catch (e) {
-      throw new Error('no se pudo subir el perfil a BRouter (red o CORS): ' + e.message);
+      const er = new Error('no se pudo subir el perfil a BRouter (red o CORS): ' + e.message); er.transient = true; throw er;
     }
     const t = await resp.text();
-    if (!resp.ok) throw new Error('BRouter rechazó la subida del perfil (' + resp.status + '): ' + (t.trim().slice(0, 200) || 'sin mensaje'));
+    if (!resp.ok) { const er = new Error('BRouter rechazó la subida del perfil (' + resp.status + '): ' + (t.trim().slice(0, 200) || 'sin mensaje')); er.transient = resp.status >= 500 || isBusy(resp.status, t); throw er; }
     let id = null, err = null;
     try { const j = JSON.parse(t); id = j.profileid || j.profileId || j.id || null; err = j.error || null; } catch (e) { /* no era JSON */ }
     if (err) throw new Error('BRouter: ' + err);
@@ -1218,11 +1217,18 @@
       if (mtbProfile.error) reason = mtbProfile.error;           // ya falló en esta sesión: no se reintenta
       else {
         try {
-          const id = await ensureMtbProfile();
+          let id;
+          try { id = await ensureMtbProfile(); }
+          catch (e1) {                                          // BRouter saturado al subir el perfil: un segundo intento tras una pausa
+            if (!e1.transient) throw e1;
+            setStatus('BRouter no aceptó la subida del perfil MTB (' + e1.message.slice(0, 80) + '). Reintentando en 5 s…');
+            await sleep(5000);
+            id = await ensureMtbProfile();
+          }
           const ex = await pickExtra(id, L1.extra);
           if (ex !== null) return { profile: id, extra: ex.extra, wanted: 'MTB', fellBack: false, roadOff: ex.roadOff, roadWhy: ex.roadWhy };
-          mtbProfile.error = 'el perfil MTB subido no responde';
-          reason = mtbProfile.error;
+          forgetProfile(id);                                    // puede que el servidor lo haya borrado: se volverá a subir la próxima vez
+          reason = 'el perfil MTB subido no responde (se reintentará en el próximo cálculo)';
         } catch (e) {
           if (e.transient) {                                    // servidor ocupado: se usa un perfil alternativo ahora, pero NO se descarta el MTB para la próxima vez
             reason = 'BRouter limitó las peticiones del perfil MTB (' + e.message.replace(/^BRouter respondió /, '') + '); reinténtalo en unos segundos';
