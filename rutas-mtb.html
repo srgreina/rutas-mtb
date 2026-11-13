@@ -204,7 +204,7 @@
     <div class="field">
       <label for="prio">Si no encajan ambos, manda…</label>
       <select id="prio">
-        <option value="bal">Equilibrado (menor desviación total)</option>
+        <option value="bal">Equilibrado (distancia hasta ±15 %)</option>
         <option value="dist">La distancia (±10 %)</option>
         <option value="asc">El desnivel (distancia hasta ±30 %)</option>
       </select>
@@ -357,7 +357,7 @@
     colors: ['#e8190c', '#1c4fd8', '#a21caf', '#e67700', '#0b7285', '#d6336c', '#5f3dc4', '#364fc7'],   // contrastan con el verde y el marrón del mapa
     delayMs: 300,                          // pausa entre peticiones (siempre de una en una: la instancia pública corta las simultáneas)
     ascentTol: 0.15,                       // tolerancia del criterio «aproximado»
-    distTol: 0.10, distTolAsc: 0.30,       // tolerancia de la distancia (normal / cuando manda el desnivel)
+    distTol: 0.10, distTolBal: 0.15, distTolAsc: 0.30,   // tolerancia de la distancia (manda distancia / equilibrado / manda desnivel)
     fitIter: 4, fitIterAsc: 4, factorKey: 'rutasMtb.distFactor.v1',   // intentos de ajuste (sin / con desnivel)
     scoutBearings: [0, 60, 120, 180, 240, 300],   // con desnivel: rumbos que se exploran antes de ajustar
     calKey: 'rutasMtb.ascCal.v1',          // relación desnivel EU-DEM ÷ desnivel BRouter (se aprende)
@@ -1284,7 +1284,7 @@
   async function fitCircular(v, extra, c, idx, total, myRun) {
     const D = v.params.dist, prio = c ? $('prio').value : 'dist';
     const tgt = c ? (c.mode === 'max' ? c.value * CONFIG.ascentMaxFactor : c.value) : 0;
-    const dTol = (c && prio === 'asc') ? CONFIG.distTolAsc : CONFIG.distTol;
+    const dTol = !c || prio === 'dist' ? CONFIG.distTol : prio === 'asc' ? CONFIG.distTolAsc : CONFIG.distTolBal;
     const evalFit = r => {
       const len = r.lengthKm, a = c ? ascentOf(r) : null;
       const dDev = Math.abs(len / D - 1), dOk = dDev <= dTol + 0.005;
@@ -1292,7 +1292,7 @@
       let aDev = 0;
       if (c && a !== null) aDev = c.mode === 'max' ? Math.max(0, a - c.value) / c.value : Math.abs(a - c.value) / c.value;
       const ok = dOk && (prio === 'dist' ? true : aOk);
-      const score = prio === 'dist' ? dDev * 10 + aDev : prio === 'asc' ? aDev * 10 + dDev + (dOk ? 0 : 5) : dDev * dDev + aDev * aDev;
+      const score = prio === 'dist' ? dDev * 10 + aDev : prio === 'asc' ? aDev * 10 + dDev + (dOk ? 0 : 5) : dDev * dDev + aDev * aDev + (dOk ? 0 : 1);
       return { len, a, ok, score, dOk };
     };
     let radius = v.params.radius, best = null;
@@ -1327,8 +1327,7 @@
       let fA = (c && ev.a !== null && ev.a > 0) ? tgt / ev.a : 1;
       if (c && c.mode === 'max' && ev.a !== null && ev.a <= c.value) fA = 1;
       const f = !c || prio === 'dist' ? fD
-        : prio === 'asc' ? Math.min(Math.max(fA, (1 - dTol * 0.97) * fD), (1 + dTol * 0.97) * fD)
-        : Math.sqrt(fD * fA);
+        : Math.min(Math.max(prio === 'asc' ? fA : Math.sqrt(fD * fA), (1 - dTol * 0.97) * fD), (1 + dTol * 0.97) * fD);   // sin salir de la tolerancia de distancia
       const want = ev.len * f;                            // longitud que se busca en el siguiente intento
       let nr = radius * f;
       const prev = hist.length > 1 ? hist[hist.length - 2] : null;
@@ -1350,6 +1349,7 @@
 
   // Con desnivel: antes de ajustar se prueban varios rumbos (sierra, costa, valle…) y se eligen los de pendiente media
   // (m/km) más parecida a la pedida; solo con el radio no se puede cumplir a la vez distancia y desnivel.
+  let lastScout = null;
   async function scoutCircular(profile, extra, c, myRun) {
     const p0 = circularParams(), D = p0.dist, A = c.value, out = [], B = CONFIG.scoutBearings;
     for (let k = 0; k < B.length; k++) {
@@ -1363,7 +1363,8 @@
         const a = ascentOf(r), len = r.lengthKm;
         if (a !== null && len > 0) {
           const SS = getSurface(r), tr = SS && SS.total ? SS.traffic / SS.total * 100 : 0;
-          out.push({ b, w, r, pts, p: p0, rate: a / len, score: Math.abs(a * D / len - A) / A + tr / 200 });   // desnivel previsto a la distancia pedida
+          const sp = findSpur(r.coords, 120, pts) ? 1 : 0;
+          out.push({ b, w, r, pts, p: p0, rate: a / len, score: Math.abs(a * D / len - A) / A + tr / 100 + sp });   // desnivel previsto a la distancia pedida
         }
       } catch (e) {
         if (myRun !== runId) return null;
@@ -1371,6 +1372,7 @@
       }                                                   // rumbo imposible (mar, sin caminos): se descarta
       if (k < B.length - 1) await sleep(CONFIG.delayMs);
     }
+    lastScout = out.length ? { D, A, min: Math.min(...out.map(x => x.rate)) * D, max: Math.max(...out.map(x => x.rate)) * D } : null;
     const byAngle = out.slice().sort((x, y) => x.b - y.b), target = A / D, picks = [];
     for (const x of out.slice().sort((x, y) => x.score - y.score)) {
       // si un rumbo vecino queda al otro lado de la pendiente pedida, se interpola el rumbo entre ambos (sin semilla: se recalcula)
@@ -1486,7 +1488,7 @@
           const SS = getSurface(r), traffic = SS ? SS.traffic / SS.total * 100 : 50;
           const okAsc = constraint ? ascentOk(ascentOf(r), constraint) : true;
           const spur = findSpur(r.coords, 120, points);
-          cands.push({ v, r, points, params, traffic, good: okAsc !== false && fitOk !== false, score: traffic + (okAsc === false ? 60 : 0) + (fitOk === false ? 60 : 0) + (spur ? 100 : 0) });
+          cands.push({ v, r, points, params, traffic, spur: !!spur, good: okAsc !== false && fitOk !== false && !spur && traffic <= 25, score: traffic + (okAsc === false ? 60 : 0) + (fitOk === false ? 60 : 0) + (spur ? 100 : 0) });
         } else {
           addRoute(v, r, points, params);
           renderRoutes();
@@ -1502,7 +1504,10 @@
     if (myRun !== runId) return;
 
     let dropped = 0;
-    if (cands.some(c => c.good)) { const n0 = cands.length; cands = cands.filter(c => c.good); dropped = n0 - cands.length; }   // si alguna cumple, fuera las que no
+    const clean = c => !c.spur && c.traffic <= 25;
+    const keep = cands.some(c => c.good) ? (c => c.good) : cands.some(clean) ? clean : null;   // si alguna cumple (o al menos es limpia), fuera el resto
+    if (keep) { const n0 = cands.length; cands = cands.filter(keep); dropped = n0 - cands.length; }
+    const anyGood = cands.some(c => c.good);
     if (cands.length) {                                   // se quedan las candidatas con menos tráfico (y que cumplan distancia y desnivel)
       cands.sort((a, b) => a.score - b.score);
       cands.slice(0, nWanted).forEach(c => addRoute(c.v, c.r, c.points, c.params));
@@ -1524,16 +1529,24 @@
 
     btn.textContent = 'Calcular otra ruta';
     const notes = [];
+    if (cands.length && !anyGood && constraint && state.mode === 'circular' && lastScout) {
+      const lo = Math.round(lastScout.min / 50) * 50, hi = Math.round(lastScout.max / 50) * 50;
+      notes.push('⚠ Ninguna variante cumple a la vez ≈' + Math.round(lastScout.D) + ' km y ≈' + lastScout.A + ' m. ' +
+        (lastScout.A < lastScout.min * 0.85 ? 'Desde este punto el terreno da como mínimo ~' + lo + ' m a esa distancia (rango ' + lo + '–' + hi + ' m según la dirección).'
+          : lastScout.A > lastScout.max * 1.15 ? 'Desde este punto el terreno da como máximo ~' + hi + ' m a esa distancia (rango ' + lo + '–' + hi + ' m según la dirección).'
+          : 'El terreno lo permite (' + lo + '–' + hi + ' m según la dirección), pero no se ha logrado en los intentos: vuelve a calcular.') +
+        ' Se muestra la mejor aproximación.');
+    }
     notes.push('Cálculo: ' + took() + '.');
     if (cands.length) notes.push('Evaluadas ' + (cands.length + skipped) + ' candidatas; se muestran las ' + Math.min(nWanted, cands.length) + ' con menos vías con tráfico (' +
       cands.slice(0, nWanted).map(c => Math.round(c.traffic) + ' %').join(', ') + ').');
     if (setup.fellBack) notes.push('No se pudo usar el perfil «' + setup.wanted + '»' + (setup.reason ? ' (' + setup.reason + ')' : '') + '. Se ha usado «' + setup.profile + '».');
     if (setup.roadOff) notes.push('BRouter no aceptó los ajustes de «Evitar carreteras»; se ha calculado sin ellos.');
     if (spursTotal) notes.push('Se han descartado ' + spursTotal + ' punto(s) auxiliar(es) que obligaban a ir y volver por el mismo camino (ramales sin salida).');
-    if (dropped) notes.push(dropped + ' variante(s) descartada(s) por no cumplir distancia o desnivel.');
+    if (dropped) notes.push(dropped + ' variante(s) descartada(s) por no cumplir distancia o desnivel, ir y volver por el mismo camino o pasar por más de un 25 % de vías con tráfico.');
     if (skipped) notes.push(skipped + ' variante(s) idéntica(s) a otra omitida(s).');
     if (failed.length) notes.push('No disponibles:\n' + failed.map(f => f.v.label + ': ' + f.e.message).join('\n'));
-    setStatus(notes.join('\n'), failed.length > 0);
+    setStatus(notes.join('\n'), failed.length > 0 || notes.some(n => n.startsWith('⚠')));
     if (added) {
       selectRoute(firstNew);
       if (isMobile()) setSheet(false);                    // en móvil se cierra el panel para ver la ruta
