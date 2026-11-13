@@ -237,6 +237,10 @@
     <div class="field" id="orsBox" style="display:none">
       <label for="orsKey">Clave de OpenRouteService</label>
       <input type="password" id="orsKey" autocomplete="off" spellcheck="false" placeholder="pega aquí tu clave">
+      <div class="row" id="orsSaved" style="display:none;align-items:center">
+        <span id="orsSavedTxt" style="flex:1;font-size:13px;color:#2f7d32;font-weight:600"></span>
+        <button class="sec" id="btnOrsChange" type="button" style="flex:none">Cambiar clave</button>
+      </div>
       <div class="hint">Gratis: regístrate en <a href="https://openrouteservice.org/dev/#/signup" target="_blank" rel="noopener">openrouteservice.org</a> y copia la clave de «Dashboard → Tokens». Límite: 2.000 cálculos al día y 40 por minuto (un cálculo con desnivel usa 10-25). Perfil «bici de montaña». La clave se guarda solo en este dispositivo.</div>
     </div>
     <select id="avoidRoads" hidden><option value="max" selected>Máximo · prioridad a pistas, carriles y senderos</option></select>
@@ -359,7 +363,7 @@
   }
 
   // ---------- Configuración ----------
-  const APP_VERSION = '2026-11-13 · v10';
+  const APP_VERSION = '2026-11-13 · v11';
   const CONFIG = {
     center: [36.7213, -4.4214],            // Málaga
     zoom: 11,
@@ -844,7 +848,7 @@
   let orsLast = 0;
   const ORS_WAY = { 1: 'primary', 2: 'tertiary', 3: 'residential', 4: 'path', 5: 'track', 6: 'cycleway', 7: 'footway', 8: 'steps', 9: 'ferry', 10: 'construction' };
   const ORS_SURF = { 1: 'paved', 2: 'unpaved', 3: 'asphalt', 4: 'concrete', 5: 'sett', 6: 'metal', 7: 'wood', 8: 'compacted', 9: 'fine_gravel', 10: 'gravel', 11: 'dirt', 12: 'ground', 13: 'ice', 14: 'paving_stones', 15: 'sand', 16: 'woodchips', 17: 'grass', 18: 'grass_paver' };
-  const orsKey = () => { try { return (localStorage.getItem(ORS.keyKey) || '').trim(); } catch (e) { return ($('orsKey').value || '').trim(); } };
+  const orsKey = () => { let k = ''; try { k = (localStorage.getItem(ORS.keyKey) || '').trim(); } catch (e) { /* sin almacenamiento */ } return k || ($('orsKey').value || '').trim(); };
 
   async function fetchORS(points, profile, altIdx, extra) {
     const key = orsKey();
@@ -3373,8 +3377,24 @@
   const ORS_KEY_STORE = 'rutasMtb.orsKey.v1';
   function applyEngine() { $('orsBox').style.display = $('engine').value === 'ors' ? '' : 'none'; }
   $('engine').addEventListener('change', () => { applyEngine(); save(); });
-  $('orsKey').addEventListener('input', () => { try { localStorage.setItem(ORS_KEY_STORE, $('orsKey').value.trim()); } catch (e) { /* sin almacenamiento */ } });
+  // Clave guardada: el campo se bloquea (solo se ve «Clave guardada ✓ …1234») hasta pulsar «Cambiar clave»
+  function showOrsKey(locked) {
+    const k = $('orsKey').value.trim();
+    const lock = locked && k.length >= 8;
+    $('orsKey').style.display = lock ? 'none' : '';
+    $('orsSaved').style.display = lock ? '' : 'none';
+    if (lock) $('orsSavedTxt').textContent = 'Clave guardada ✓ (…' + k.slice(-4) + ')';
+  }
+  function storeOrsKey() {
+    const k = $('orsKey').value.trim();
+    try { if (k) localStorage.setItem(ORS_KEY_STORE, k); else localStorage.removeItem(ORS_KEY_STORE); } catch (e) { /* sin almacenamiento */ }
+    showOrsKey(true);
+  }
+  $('orsKey').addEventListener('change', storeOrsKey);                 // al pegar y salir del campo (o pulsar Intro)
+  $('orsKey').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('orsKey').blur(); } });
+  $('btnOrsChange').addEventListener('click', () => { showOrsKey(false); $('orsKey').value = ''; $('orsKey').focus(); });
   try { $('orsKey').value = localStorage.getItem(ORS_KEY_STORE) || ''; } catch (e) { /* sin almacenamiento */ }
+  showOrsKey(true);
 
   // ---------- Persistencia local ----------
   function save() {
