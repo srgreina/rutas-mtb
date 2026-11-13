@@ -355,7 +355,7 @@
     auxPoints: 5,                          // puntos auxiliares del circuito (además de salida y llegada)
     circularOffsets: [0, 45, -45, 90, -90, 135, -135, 180],   // dirección de cada variante/candidata circular (grados)
     colors: ['#e8190c', '#1c4fd8', '#a21caf', '#e67700', '#0b7285', '#d6336c', '#5f3dc4', '#364fc7'],   // contrastan con el verde y el marrón del mapa
-    delayMs: 300,                          // pausa entre peticiones (siempre de una en una: la instancia pública corta las simultáneas)
+    delayMs: 700,                          // pausa entre peticiones (siempre de una en una: la instancia pública corta las simultáneas)
     ascentTol: 0.15,                       // tolerancia del criterio «aproximado»
     distTol: 0.10, distTolBal: 0.15, distTolAsc: 0.30,   // tolerancia de la distancia (manda distancia / equilibrado / manda desnivel)
     fitIter: 4, fitIterAsc: 4, factorKey: 'rutasMtb.distFactor.v1',   // intentos de ajuste (sin / con desnivel)
@@ -376,18 +376,16 @@
     enduro:  { candidates: ['gravel', 'trekking'], extra: 'profile:mtb_hard_factor=4',     mtb: true, hint: 'MTB (zossebart), factor 4: enduro, senderos técnicos. Si no carga, gravel.' }
   };
 
-  // «Evitar carreteras»: parámetros profile: que se añaden al perfil. Los nombres que un perfil no define los ignora BRouter.
-  //  · MTB zossebart: road_factor=0 (máxima aversión a carreteras), use_sidewalks=false (una acera no suaviza la carretera)
-  //  · trekking/gravel: avoid_unsafe, consider_traffic, consider_noise, consider_town y unpavedPenalty bajo (el firme sin asfaltar no penaliza)
-  //  · Nivel reforzado: mj_rd_penalty 0,5 → 1,5 (penalización extra a primarias, secundarias, terciarias y sin clasificar)
-  //    e isbike_reduce 0,7 → 1 (un carril bici pintado no abarata la carretera). Si BRouter no lo acepta, se usa el nivel normal.
-  const ROAD_BASE = 'profile:road_factor=0&profile:use_sidewalks=false&profile:avoid_unsafe=true&profile:consider_traffic=true&profile:consider_noise=true&profile:consider_town=true&profile:unpavedPenalty=0.2';
-  const ROAD_PARAMS = {
-    max:    [ROAD_BASE + '&profile:mj_rd_penalty=1.5&profile:isbike_reduce=1', ROAD_BASE],
-    alto:   'profile:road_factor=0&profile:avoid_unsafe=true&profile:consider_traffic=true',
-    normal: ''
+  // «Evitar carreteras»: a cada perfil solo se le mandan parámetros que tiene (BRouter rechaza la petición si no existen).
+  // Se prueban de más a menos estricto y se usa el primero que BRouter acepte.
+  //  · MTB zossebart: road_factor=0 (máxima aversión a carreteras), use_sidewalks=false (una acera no abarata la carretera),
+  //    mj_rd_penalty 0,5 → 1,5 (más penalización a primarias, secundarias, terciarias y sin clasificar), isbike_reduce 0,7 → 1
+  //  · trekking/gravel: avoid_unsafe, consider_traffic, consider_noise, consider_town
+  const ROAD_TIERS = {
+    mtb:   ['profile:road_factor=0&profile:use_sidewalks=false&profile:mj_rd_penalty=1.5&profile:isbike_reduce=1', 'profile:road_factor=0&profile:use_sidewalks=false'],
+    other: ['profile:avoid_unsafe=true&profile:consider_traffic=true&profile:consider_noise=true&profile:consider_town=true', 'profile:avoid_unsafe=true']
   };
-  const roadExtra = () => [].concat(ROAD_PARAMS[$('avoidRoads').value] || []).filter(Boolean);   // niveles a probar, de más a menos estricto
+  const roadExtra = pf => ($('avoidRoads').value === 'normal' ? [] : ROAD_TIERS[/^custom/.test(pf) ? 'mtb' : 'other']);
   const joinExtra = (a, b) => [a, b].filter(Boolean).join('&');
 
   const SURF = {
@@ -1115,7 +1113,7 @@
 
   // Prueba el perfil con los parámetros de «evitar carreteras»; si BRouter los rechaza, vuelve a probar sin ellos
   async function pickExtra(pf, base) {
-    const tiers = roadExtra();
+    const tiers = roadExtra(pf);
     for (const road of tiers) if (await probeProfile(pf, joinExtra(base, road))) return { extra: joinExtra(base, road), roadOff: false };
     if (await probeProfile(pf, base)) return { extra: base, roadOff: tiers.length > 0 };
     return null;
@@ -1354,6 +1352,7 @@
   let lastScout = null;
   async function scoutCircular(profile, extra, c, myRun) {
     const p0 = circularParams(), D = p0.dist, A = c.value, out = [], B = CONFIG.scoutBearings;
+    let retried = false;
     for (let k = 0; k < B.length; k++) {
       const b = B[k] + rnd(-15, 15);
       const w = circularWaypoints(state.start, p0, b);
@@ -1370,8 +1369,9 @@
         }
       } catch (e) {
         if (myRun !== runId) return null;
-        if (e.transient || /^No se pudo contactar/.test(e.message)) throw e;      // servidor saturado o sin red
-      }                                                   // rumbo imposible (mar, sin caminos): se descarta
+        if (/^No se pudo contactar/.test(e.message)) throw e;                     // sin red
+        if (e.transient && !retried) { retried = true; setStatus('BRouter está saturado: espero 15 s y sigo explorando…'); await sleep(15000); k--; continue; }
+      }                                                   // rumbo imposible (mar, sin caminos) o servidor saturado de nuevo: se descarta
       if (k < B.length - 1) await sleep(CONFIG.delayMs);
     }
     lastScout = out.length ? { D, A, min: Math.min(...out.map(x => x.rate)) * D, max: Math.max(...out.map(x => x.rate)) * D } : null;
@@ -1445,13 +1445,14 @@
     let K = nWanted;
     if (searching && !(state.mode === 'circular' && !state.passes.length)) K = Math.min(nWanted + 1, 4);   // con ajuste de desnivel cada candidata ya cuesta 2-4 peticiones
     if (state.mode === 'ab' && !(VARIETY[$('variety').value] || VARIETY.media).perp) K = Math.min(K, 4);   // BRouter solo ofrece alternativas 0-3
-    let variants = buildVariants(setup.profile, K);
+    const circFit = state.mode === 'circular' && !state.passes.length;
+    let variants = buildVariants(setup.profile, circFit ? Math.min(nWanted + 3, CONFIG.circularOffsets.length) : K);
     if (state.mode === 'circular' && !state.passes.length && constraint) {
       let sc = null;
       try { sc = await scoutCircular(setup.profile, extra, constraint, myRun); }
       catch (e) { if (myRun === runId) { setStatus(e.message + (e.transient ? BUSY_MSG : ''), true, e.url); btn.disabled = false; } return; }
       if (myRun !== runId) return;
-      if (sc && sc.length) variants = sc.slice(0, nWanted + 1).map((x, i) => ({   // una de reserva: se quedan las mejores
+      if (sc && sc.length) variants = sc.map((x, i) => ({   // todas las exploradas, en orden: las de reserva solo se calculan si faltan rutas
         label: 'Ruta ' + (i + 1) + ' · hacia ' + compass(x.b), points: x.pts, alt: 0, profile: setup.profile,
         params: Object.assign({}, x.p, x.seed ? {} : { radius: x.p.radius * Math.min(2, Math.max(0.5, x.p.dist / x.r.lengthKm)) }),
         offset: x.b, seed: x.seed ? { r: x.r, points: x.pts } : null
@@ -1467,6 +1468,10 @@
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
       if (searching && cands.filter(c => c.score < 12).length >= nWanted) break;   // ya hay suficientes con poco tráfico
+      if (circFit) {                                      // circular: se calculan las pedidas + 1 de reserva; más solo si aún faltan rutas
+        const usable = cands.filter(c => !c.spur).length;
+        if (usable >= nWanted + 1 || (i >= nWanted + 1 && usable >= nWanted)) break;
+      }
       setStatus((searching ? 'Evaluando candidata ' : 'Calculando ') + (i + 1) + ' de ' + variants.length + ' con BRouter… (' + took() + ')' +
         (cands.length ? ' · mejor hasta ahora: ' + Math.round(Math.min(...cands.map(c => c.traffic))) + ' % vías con tráfico' : ''));
       try {
@@ -1498,16 +1503,21 @@
         }
       } catch (e) {
         if (myRun !== runId) return;
+        if (/^No se pudo contactar/.test(e.message)) { failed.push({ v, e }); break; }   // sin red: no se insiste
+        if (e.transient && !v._retried) {                 // servidor saturado: se espera y se repite esta variante una vez
+          v._retried = true; setStatus('BRouter está saturado: espero 15 s y sigo con la variante ' + (i + 1) + '…');
+          await sleep(15000); if (myRun !== runId) return; i--; continue;
+        }
         failed.push({ v, e });
-        if (e.transient || /^No se pudo contactar/.test(e.message)) break;   // servidor saturado o sin red: no se insiste
       }
       if (i < variants.length - 1) await sleep(CONFIG.delayMs);
     }
     if (myRun !== runId) return;
 
     let dropped = 0;
-    if (cands.some(c => !c.spur)) { const n0 = cands.length; cands = cands.filter(c => !c.spur); dropped = n0 - cands.length; }   // fuera idas y vueltas
-    const tier = c => c.good ? 0 : c.traffic <= 25 ? 1 : 2;      // 0: cumple todo · 1: poco tráfico · 2: resto
+    const noSpur = cands.filter(c => !c.spur);
+    if (noSpur.length >= nWanted) { dropped = cands.length - noSpur.length; cands = noSpur; }   // idas y vueltas fuera solo si sobran
+    const tier = c => c.spur ? 3 : c.good ? 0 : c.traffic <= 25 ? 1 : 2;   // 0: cumple todo · 1: poco tráfico · 2: más tráfico · 3: ida y vuelta
     const anyGood = cands.some(c => c.good);
     if (cands.length) {                                   // se quedan las candidatas con menos tráfico (y que cumplan distancia y desnivel)
       cands.sort((a, b) => tier(a) - tier(b) || a.score - b.score);
