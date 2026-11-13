@@ -1321,8 +1321,10 @@
       const ev = evalFit(r);
       hist.push({ R: radius, L: ev.len });
       const cand = { r, points: pts, params: p, ok: ev.ok, score: ev.score, spurs };
+      const prevScore = best ? best.score : Infinity;
       if (!best || (cand.ok && !best.ok) || (cand.ok === best.ok && cand.score < best.score)) best = cand;
       if (ev.ok) break;
+      if (it >= 2 && best.score > prevScore * 0.97) break;     // ya apenas mejora: no se gastan más peticiones
       const fD = D / ev.len;
       let fA = (c && ev.a !== null && ev.a > 0) ? tgt / ev.a : 1;
       if (c && c.mode === 'max' && ev.a !== null && ev.a <= c.value) fA = 1;
@@ -1449,7 +1451,7 @@
       try { sc = await scoutCircular(setup.profile, extra, constraint, myRun); }
       catch (e) { if (myRun === runId) { setStatus(e.message + (e.transient ? BUSY_MSG : ''), true, e.url); btn.disabled = false; } return; }
       if (myRun !== runId) return;
-      if (sc && sc.length) variants = sc.slice(0, nWanted).map((x, i) => ({
+      if (sc && sc.length) variants = sc.slice(0, nWanted + 1).map((x, i) => ({   // una de reserva: se quedan las mejores
         label: 'Ruta ' + (i + 1) + ' · hacia ' + compass(x.b), points: x.pts, alt: 0, profile: setup.profile,
         params: Object.assign({}, x.p, x.seed ? {} : { radius: x.p.radius * Math.min(2, Math.max(0.5, x.p.dist / x.r.lengthKm)) }),
         offset: x.b, seed: x.seed ? { r: x.r, points: x.pts } : null
@@ -1504,12 +1506,11 @@
     if (myRun !== runId) return;
 
     let dropped = 0;
-    const clean = c => !c.spur && c.traffic <= 25;
-    const keep = cands.some(c => c.good) ? (c => c.good) : cands.some(clean) ? clean : null;   // si alguna cumple (o al menos es limpia), fuera el resto
-    if (keep) { const n0 = cands.length; cands = cands.filter(keep); dropped = n0 - cands.length; }
+    if (cands.some(c => !c.spur)) { const n0 = cands.length; cands = cands.filter(c => !c.spur); dropped = n0 - cands.length; }   // fuera idas y vueltas
+    const tier = c => c.good ? 0 : c.traffic <= 25 ? 1 : 2;      // 0: cumple todo · 1: poco tráfico · 2: resto
     const anyGood = cands.some(c => c.good);
     if (cands.length) {                                   // se quedan las candidatas con menos tráfico (y que cumplan distancia y desnivel)
-      cands.sort((a, b) => a.score - b.score);
+      cands.sort((a, b) => tier(a) - tier(b) || a.score - b.score);
       cands.slice(0, nWanted).forEach(c => addRoute(c.v, c.r, c.points, c.params));
       renderRoutes();
     }
@@ -1538,12 +1539,12 @@
         ' Se muestra la mejor aproximación.');
     }
     notes.push('Cálculo: ' + took() + '.');
-    if (cands.length) notes.push('Evaluadas ' + (cands.length + skipped) + ' candidatas; se muestran las ' + Math.min(nWanted, cands.length) + ' con menos vías con tráfico (' +
+    if (cands.length) notes.push('Evaluadas ' + (cands.length + skipped) + ' candidatas; se muestran las ' + Math.min(nWanted, cands.length) + ' mejores: primero las que cumplen distancia y desnivel, luego las de menos tráfico (' +
       cands.slice(0, nWanted).map(c => Math.round(c.traffic) + ' %').join(', ') + ').');
     if (setup.fellBack) notes.push('No se pudo usar el perfil «' + setup.wanted + '»' + (setup.reason ? ' (' + setup.reason + ')' : '') + '. Se ha usado «' + setup.profile + '».');
     if (setup.roadOff) notes.push('BRouter no aceptó los ajustes de «Evitar carreteras»; se ha calculado sin ellos.');
     if (spursTotal) notes.push('Se han descartado ' + spursTotal + ' punto(s) auxiliar(es) que obligaban a ir y volver por el mismo camino (ramales sin salida).');
-    if (dropped) notes.push(dropped + ' variante(s) descartada(s) por no cumplir distancia o desnivel, ir y volver por el mismo camino o pasar por más de un 25 % de vías con tráfico.');
+    if (dropped) notes.push(dropped + ' variante(s) descartada(s) por ir y volver por el mismo camino.');
     if (skipped) notes.push(skipped + ' variante(s) idéntica(s) a otra omitida(s).');
     if (failed.length) notes.push('No disponibles:\n' + failed.map(f => f.v.label + ': ' + f.e.message).join('\n'));
     setStatus(notes.join('\n'), failed.length > 0 || notes.some(n => n.startsWith('⚠')));
