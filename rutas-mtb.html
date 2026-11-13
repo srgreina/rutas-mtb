@@ -347,6 +347,7 @@
   }
 
   // ---------- Configuración ----------
+  const APP_VERSION = '2026-11-13 · v7';
   const CONFIG = {
     center: [36.7213, -4.4214],            // Málaga
     zoom: 11,
@@ -1306,6 +1307,11 @@
         try { r = await fetchBRouter(pts, v.profile, 0, extra); }
         catch (e) {
           if (myRun !== runId) return null;
+          if (!best && !e.transient && !/^No se pudo contactar/.test(e.message) && it < iters - 1) {   // punto en una «isla» de caminos, mar…: se gira y se reduce
+            v.offset = (v.offset || 0) + 25; radius = Math.max(0.8, radius * 0.9);
+            await sleep(CONFIG.delayMs);
+            continue;
+          }
           if (!best || !hist.length || e.transient || /^No se pudo contactar/.test(e.message)) { if (!best) throw e; break; }
           radius = (radius + hist[hist.length - 1].R) / 2;     // ese radio no es viable (mar, sin caminos…): se retrocede a medio camino
           await sleep(CONFIG.delayMs);
@@ -1459,7 +1465,7 @@
       }));
     }
     let skipped = 0, spursTotal = 0;
-    const failed = []; let cands = [];
+    const failed = []; let cands = [], extraRounds = 0;
     const addRoute = (v, r, points, params) => state.routes.push({
       label: (batch > 1 ? 'C' + batch + ' · ' : '') + v.label, color: CONFIG.colors[state.routes.length % CONFIG.colors.length],
       mode: state.mode, profile: v.profile, extra, params, constraint, waypoints: points, result: r, history: [], edited: false
@@ -1510,6 +1516,14 @@
         }
         failed.push({ v, e });
       }
+      if (circFit && i === variants.length - 1 && extraRounds < 2 && cands.filter(c => !c.spur).length < nWanted) {
+        extraRounds++;                                    // aún faltan rutas: se giran ±35° las mejores conseguidas (o las primeras)
+        const src = cands.length ? cands.slice().sort((a, b) => a.score - b.score).map(c => c.v) : variants.slice(0, 2);
+        src.slice(0, 2).forEach(v0 => [35, -35].forEach(d => {
+          const off = (v0.offset || 0) + d;
+          variants.push(Object.assign({}, v0, { label: 'Ruta ' + (variants.length + 1) + ' · hacia ' + compass(off), offset: off, seed: null, _retried: false, params: Object.assign({}, v0.params) }));
+        }));
+      }
       if (i < variants.length - 1) await sleep(CONFIG.delayMs);
     }
     if (myRun !== runId) return;
@@ -1521,7 +1535,7 @@
     const anyGood = cands.some(c => c.good);
     if (cands.length) {                                   // se quedan las candidatas con menos tráfico (y que cumplan distancia y desnivel)
       cands.sort((a, b) => tier(a) - tier(b) || a.score - b.score);
-      cands.slice(0, nWanted).forEach(c => addRoute(c.v, c.r, c.points, c.params));
+      cands.slice(0, nWanted).forEach((c, k) => addRoute(Object.assign({}, c.v, { label: c.v.label.replace(/^Ruta \d+/, 'Ruta ' + (k + 1)) }), c.r, c.points, c.params));
       renderRoutes();
     }
     btn.disabled = false;
@@ -1548,7 +1562,7 @@
           : 'El terreno lo permite (' + lo + '–' + hi + ' m según la dirección), pero no se ha logrado en los intentos: vuelve a calcular.') +
         ' Se muestra la mejor aproximación.');
     }
-    notes.push('Cálculo: ' + took() + '.');
+    notes.push('Cálculo: ' + took() + '. Versión ' + APP_VERSION + '.');
     if (cands.length) notes.push('Evaluadas ' + (cands.length + skipped) + ' candidatas; se muestran las ' + Math.min(nWanted, cands.length) + ' mejores: primero las que cumplen distancia y desnivel, luego las de menos tráfico (' +
       cands.slice(0, nWanted).map(c => Math.round(c.traffic) + ' %').join(', ') + ').');
     if (setup.fellBack) notes.push('No se pudo usar el perfil «' + setup.wanted + '»' + (setup.reason ? ' (' + setup.reason + ')' : '') + '. Se ha usado «' + setup.profile + '».');
@@ -3116,7 +3130,8 @@
   new ModeCtl().addTo(map);
 
   // ---------- Créditos del mapa plegados en un icono ⓘ (el crédito sigue disponible al tocarlo) ----------
-  map.attributionControl.setPrefix(false);               // quita «Leaflet» y la bandera (es opcional)
+  map.attributionControl.setPrefix(false);
+  map.attributionControl.addAttribution('Rutas MTB ' + APP_VERSION);               // quita «Leaflet» y la bandera (es opcional)
   map.attributionControl.setPosition('topright');        // arriba: abajo lo taparía el panel en móvil (antes de ocultarlo: al mover el control se recrea su contenedor)
   (function () {
     const attr = map.attributionControl.getContainer();
