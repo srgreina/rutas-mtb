@@ -75,6 +75,33 @@
   .via-icon { width: 14px; height: 14px; background: #fff; border: 3px solid #1b6ca8; border-radius: 50%; box-shadow: 0 0 3px rgba(0,0,0,.5); cursor: grab; }
   #fatal { display: none; padding: 20px; color: var(--err); font-weight: 600; }
   @supports (height: 100dvh) { html, body, #app { height: 100dvh; } }
+  #demBox { margin: 10px 0; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; }
+  #demBox > summary { font-weight: 600; color: var(--text); margin: 0; }
+  #demBox[open] > summary { margin-bottom: 8px; }
+  #demStatus { font-size: 12px; color: var(--muted); min-height: 16px; margin-bottom: 6px; }
+  #demStatus.err { color: var(--err); }
+  .demw { font-size: 12.5px; padding: 6px 8px; border-radius: 4px; margin: 6px 0; }
+  .demw.warn { background: #fff4e5; border: 1px solid #f5c27a; color: #7a4b00; }
+  .demw.ok { background: #ecfaf0; border: 1px solid #a9dfb9; color: #1d5e33; }
+  .steepRow { display: flex; gap: 6px; align-items: baseline; font-size: 12.5px; padding: 5px 0; border-bottom: 1px solid var(--border); cursor: pointer; font-variant-numeric: tabular-nums; }
+  .steepRow:hover { background: var(--bg); }
+  .steepRow .dir { font-weight: 700; width: 14px; flex: none; }
+  #svcBox { background: #fff; border-radius: 6px; box-shadow: 0 1px 5px rgba(0,0,0,.4); padding: 8px 10px; font-size: 12.5px; width: 230px; max-width: calc(100vw - 80px); max-height: calc(100vh - 120px); overflow: auto; color: var(--text); }
+  #svcBox .svcSt { color: var(--muted); font-size: 12px; margin: 2px 0 6px; }
+  #svcBox .svcSt.err { color: var(--err); }
+  #svcBox label { display: flex; gap: 6px; align-items: center; padding: 3px 0; }
+  #svcBox label span.n { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+  #svcBox button { width: 100%; margin-bottom: 6px; }
+  .svcIc { width: 26px; height: 26px; line-height: 24px; text-align: center; font-size: 15px; background: #fff; border: 2px solid #1565c0; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,.45); }
+  #wxBox { margin: 10px 0; border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; background: #fff; }
+  #wxBox > summary { font-weight: 600; color: var(--text); margin: 0; }
+  #wxBox[open] > summary { margin-bottom: 8px; }
+  #wxStatus { font-size: 12px; color: var(--muted); min-height: 16px; margin-bottom: 6px; }
+  #wxStatus.err { color: var(--err); }
+  .demw.bad { background: #fdecea; border: 1px solid #f1a9a0; color: #8a1c10; }
+  .wxRow { display: grid; grid-template-columns: 44px 1fr 1fr 1fr; gap: 4px; font-size: 12.5px; padding: 3px 0; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .wxRow.h { color: var(--muted); font-size: 11.5px; }
+  .wxRow.rain { background: #eef5ff; }
   #sheetHandle { display: none; }
   .row.wrap { flex-wrap: wrap; }
   .row.wrap > button { flex: 1 1 90px; }
@@ -162,36 +189,32 @@
     <div id="passList"></div>
     <div class="hint" id="passHint">La ruta pasará obligatoriamente por estos lugares. Varios a la vez: sepáralos con «;». También con clic derecho en el mapa → «Añadir a Pasar por».</div>
 
+    <h2>Objetivo del recorrido</h2>
+    <div class="row field">
+      <div id="distWrap">
+        <label for="dist">Distancia (km, ±10 %)</label>
+        <input type="number" id="dist" min="5" max="200" step="1" value="40">
+      </div>
+      <div>
+        <label for="ascent">Desnivel + (m, ±15 %)</label>
+        <input type="number" id="ascent" min="0" step="50" placeholder="sin límite">
+      </div>
+    </div>
+    <select id="ascentMode" hidden><option value="approx" selected>Aproximado (±15 %)</option></select>
+    <div class="field">
+      <label for="prio">Si no encajan ambos, manda…</label>
+      <select id="prio">
+        <option value="bal">Equilibrado (menor desviación total)</option>
+        <option value="dist">La distancia (±10 %)</option>
+        <option value="asc">El desnivel (distancia hasta ±30 %)</option>
+      </select>
+    </div>
     <div id="circularOpts">
-      <h2>Circuito</h2>
-      <div class="row field">
-        <div>
-          <label for="radius">Radio (km)</label>
-          <input type="number" id="radius" min="1" max="60" step="0.5" value="10">
-        </div>
-        <div>
-          <label for="bearing">Dirección</label>
-          <select id="bearing">
-            <option value="0">N</option>
-            <option value="45">NE</option>
-            <option value="90">E</option>
-            <option value="135">SE</option>
-            <option value="180">S</option>
-            <option value="225">SO</option>
-            <option value="270">O</option>
-            <option value="315">NO</option>
-          </select>
-        </div>
-      </div>
-      <div class="field">
-        <label for="sense">Sentido de giro</label>
-        <select id="sense">
-          <option value="1">Horario</option>
-          <option value="-1">Antihorario</option>
-        </select>
-      </div>
+      <select id="bearing" hidden><option value="0" selected>N</option></select>
+      <select id="sense" hidden><option value="1" selected>Horario</option></select>
       <div class="hint" id="theory"></div>
     </div>
+    <div class="hint" id="ascentHint"></div>
 
     <h2>Dificultad</h2>
     <div class="field">
@@ -204,15 +227,7 @@
       </select>
       <div class="hint" id="levelHint"></div>
     </div>
-    <div class="field">
-      <label for="avoidRoads">Evitar carreteras de coches</label>
-      <select id="avoidRoads">
-        <option value="max" selected>Máximo · prioridad a pistas, carriles y senderos</option>
-        <option value="alto">Alto</option>
-        <option value="normal">Normal (sin ajuste extra)</option>
-      </select>
-      <div class="hint">Penaliza carreteras con tráfico (primarias, secundarias, terciarias, núcleos urbanos) y favorece vías sin coches. Si no hay otra salida, la ruta puede cruzarlas o usarlas en tramos cortos.</div>
-    </div>
+    <select id="avoidRoads" hidden><option value="max" selected>Máximo · prioridad a pistas, carriles y senderos</option></select>
     <div id="customOpts" style="display:none">
       <div class="field">
         <label for="profile">Perfil BRouter</label>
@@ -230,21 +245,6 @@
         <input type="text" id="extra" placeholder="profile:nombre=valor&amp;..." spellcheck="false">
       </div>
     </div>
-    <h2>Desnivel acumulado (+)</h2>
-    <div class="row field">
-      <div>
-        <label for="ascent">Metros (opcional)</label>
-        <input type="number" id="ascent" min="0" step="50" placeholder="sin límite">
-      </div>
-      <div>
-        <label for="ascentMode">Criterio</label>
-        <select id="ascentMode">
-          <option value="max">Como máximo</option>
-          <option value="approx">Aproximado (±15 %)</option>
-        </select>
-      </div>
-    </div>
-    <div class="hint" id="ascentHint"></div>
 
     <div class="field">
       <label for="nAlt">Número de variantes</label>
@@ -255,14 +255,7 @@
       </select>
     </div>
 
-    <div class="field">
-      <label for="search">Búsqueda de la mejor opción</label>
-      <select id="search">
-        <option value="auto" selected>Evaluar más candidatas y quedarme con las de menos tráfico</option>
-        <option value="off">Solo calcular las variantes pedidas (más rápido)</option>
-      </select>
-      <div class="hint">Calcula 1 candidata más de las pedidas (máx. 4) y muestra las que tienen menos vías con tráfico; para antes si ya hay suficientes con poco tráfico. Con límite de desnivel no añade candidatas (cada una ya cuesta varias peticiones).</div>
-    </div>
+    <select id="search" hidden><option value="auto" selected>Evaluar más candidatas y quedarme con las de menos tráfico</option></select>
     <div class="field">
       <label for="variety">Variedad entre cálculos</label>
       <select id="variety">
@@ -284,6 +277,32 @@
       <h2>Ruta seleccionada</h2>
       <div class="stats" id="stats"></div>
       <div id="surf"></div>
+      <details id="demBox">
+        <summary id="demSum">Perfil y pendientes</summary>
+        <div id="demStatus"></div>
+        <div class="stats" id="demStats"></div>
+        <div id="demWarn"></div>
+        <div class="row" style="margin-top:8px;align-items:end">
+          <div class="field" style="margin:0"><label for="slopeThr">Pendiente dura desde (%)</label><input type="number" id="slopeThr" min="3" max="60" step="1" value="12"></div>
+          <button class="sec" id="btnDem" type="button">Calcular altitudes</button>
+        </div>
+        <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin:8px 0 4px"><input type="checkbox" id="demAuto" checked> Consultar altitudes automáticamente al elegir una ruta</label>
+        <div id="steepList"></div>
+        <div class="hint">▲ amarillo = subida dura, ▼ celeste = bajada dura (tramos de 100 m o más). Altitudes EU-DEM 25 m vía OpenTopoData; pendiente medida sobre 100 m con la altitud suavizada. Límite del servicio: 1 llamada/s y 1.000 al día (cada 100 puntos = 1 llamada); los resultados se guardan en el móvil.</div>
+      </details>
+      <details id="wxBox">
+        <summary id="wxSum">Previsión del tiempo</summary>
+        <div id="wxStatus"></div>
+        <div class="row" style="align-items:end">
+          <div class="field" style="margin:0"><label for="wxDay">Día</label><select id="wxDay"></select></div>
+          <div class="field" style="margin:0"><label for="wxHour">Salida</label><select id="wxHour"></select></div>
+          <div class="field" style="margin:0"><label for="wxSpeed">Vel. media (km/h)</label><input type="number" id="wxSpeed" min="4" max="40" step="1" value="12"></div>
+        </div>
+        <div id="wxVerdict"></div>
+        <div id="wxTable"></div>
+        <button class="sec" id="btnWx" type="button" style="margin-top:8px">Actualizar previsión</button>
+        <div class="hint">Previsión en el punto medio de la ruta (hora local, km/h, °C, mm). Franja = desde la salida hasta la hora estimada de llegada (distancia ÷ velocidad media). Datos: <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo.com</a> (CC BY 4.0), sin clave; se guardan 1 h en el móvil. Criterio: «no recomendable» con lluvia ≥ 3 mm, probabilidad ≥ 70 %, rachas ≥ 60 km/h, ≥ 36 °C o ≤ 0 °C; «dudoso» con lluvia ≥ 0,5 mm, probabilidad ≥ 40 %, rachas ≥ 40 km/h, viento ≥ 30 km/h, ≥ 32 °C o ≤ 3 °C.</div>
+      </details>
       <h2>Exportar a Garmin</h2>
       <div class="field">
         <label for="gpxName">Nombre del recorrido</label>
@@ -299,7 +318,6 @@
         <button class="sec" id="btnUndo" type="button" disabled>Deshacer edición</button>
         <button class="sec" id="btnClearPend" type="button">Limpiar errores</button>
       </div>
-      <button class="sec" id="btnFixSpurs" type="button" style="display:none;width:100%;margin-top:6px">⚠ Quitar entradas y salidas por el mismo camino</button>
       <div class="hint">Edición: para añadir un punto de paso, haz clic derecho (o pulsación larga en móvil) en cualquier sitio del mapa y elige «Pasar por aquí»; arrástralo para moverlo; tócalo para borrarlo. También puedes corregir el trazado arrastrando la propia línea: en ordenador, arrastra la línea (el cursor cambia a mano); en móvil, botón ✎ del mapa y arrastrar. Si un punto no es válido se marca con «!» en rojo y se queda hasta que lo borres, lo arrastres a otro sitio o pulses «Limpiar errores». Para mover la salida, arrastra su marcador.</div>
     </div>
 
@@ -339,7 +357,10 @@
     colors: ['#e8190c', '#1c4fd8', '#a21caf', '#e67700', '#0b7285', '#d6336c', '#5f3dc4', '#364fc7'],   // contrastan con el verde y el marrón del mapa
     delayMs: 300,                          // pausa entre peticiones (siempre de una en una: la instancia pública corta las simultáneas)
     ascentTol: 0.15,                       // tolerancia del criterio «aproximado»
-    ascentMaxIter: 3,                      // intentos de ajuste de radio por variante (circular)
+    distTol: 0.10, distTolAsc: 0.30,       // tolerancia de la distancia (normal / cuando manda el desnivel)
+    fitIter: 4, fitIterAsc: 4, factorKey: 'rutasMtb.distFactor.v1',   // intentos de ajuste (sin / con desnivel)
+    scoutBearings: [0, 60, 120, 180, 240, 300],   // con desnivel: rumbos que se exploran antes de ajustar
+    calKey: 'rutasMtb.ascCal.v1',          // relación desnivel EU-DEM ÷ desnivel BRouter (se aprende)
     ascentMaxFactor: 0.9,                  // en modo «máximo» se apunta al 90 % del límite
     maxHistory: 20,
     storageKey: 'rutasMtb.v1'
@@ -358,12 +379,15 @@
   // «Evitar carreteras»: parámetros profile: que se añaden al perfil. Los nombres que un perfil no define los ignora BRouter.
   //  · MTB zossebart: road_factor=0 (máxima aversión a carreteras), use_sidewalks=false (una acera no suaviza la carretera)
   //  · trekking/gravel: avoid_unsafe, consider_traffic, consider_noise, consider_town y unpavedPenalty bajo (el firme sin asfaltar no penaliza)
+  //  · Nivel reforzado: mj_rd_penalty 0,5 → 1,5 (penalización extra a primarias, secundarias, terciarias y sin clasificar)
+  //    e isbike_reduce 0,7 → 1 (un carril bici pintado no abarata la carretera). Si BRouter no lo acepta, se usa el nivel normal.
+  const ROAD_BASE = 'profile:road_factor=0&profile:use_sidewalks=false&profile:avoid_unsafe=true&profile:consider_traffic=true&profile:consider_noise=true&profile:consider_town=true&profile:unpavedPenalty=0.2';
   const ROAD_PARAMS = {
-    max:    'profile:road_factor=0&profile:use_sidewalks=false&profile:avoid_unsafe=true&profile:consider_traffic=true&profile:consider_noise=true&profile:consider_town=true&profile:unpavedPenalty=0.2',
+    max:    [ROAD_BASE + '&profile:mj_rd_penalty=1.5&profile:isbike_reduce=1', ROAD_BASE],
     alto:   'profile:road_factor=0&profile:avoid_unsafe=true&profile:consider_traffic=true',
     normal: ''
   };
-  const roadExtra = () => ROAD_PARAMS[$('avoidRoads').value] || '';
+  const roadExtra = () => [].concat(ROAD_PARAMS[$('avoidRoads').value] || []).filter(Boolean);   // niveles a probar, de más a menos estricto
   const joinExtra = (a, b) => [a, b].filter(Boolean).join('&');
 
   const SURF = {
@@ -648,8 +672,10 @@
       ? 'Clic en el mapa para fijar la salida. Los marcadores se pueden arrastrar.'
       : 'Clic en el mapa: primero A, después B (o elige cuál fija el clic). Marcadores arrastrables.';
     if (endMarker) { if (circ) map.removeLayer(endMarker); else endMarker.addTo(map); }
+    $('prio').closest('.field').style.display = circ ? '' : 'none';
+    $('distWrap').style.display = circ ? '' : 'none';
     $('ascentHint').textContent = circ
-      ? 'Se ajusta el radio automáticamente (hasta ' + CONFIG.ascentMaxIter + ' intentos por variante, cada uno es una petición a BRouter).'
+      ? 'Se ajusta solo a la distancia y al desnivel (hasta ' + CONFIG.fitIterAsc + ' peticiones a BRouter por variante).'
       : 'En A→B los extremos son fijos: se calcula y se marca qué variantes cumplen.';
     updateBtn();
     drawPreview();
@@ -665,9 +691,13 @@
   // El circuito es una circunferencia de radio R que pasa por la salida. Su centro está
   // a R km de la salida en la dirección elegida; los puntos auxiliares se reparten sobre
   // esa circunferencia en el sentido de giro indicado.
+  let distFactor = 1.2;                                  // longitud real ÷ circunferencia teórica (se aprende de los cálculos)
+  try { const f = parseFloat(localStorage.getItem(CONFIG.factorKey)); if (f >= 1 && f <= 1.6) distFactor = f; } catch (e) { /* sin almacenamiento */ }
   function circularParams() {
+    const dist = Math.max(5, parseFloat($('dist').value) || 40);
     return {
-      radius: Math.max(1, parseFloat($('radius').value) || 10),
+      dist,
+      radius: Math.max(0.8, dist / (2 * Math.PI * distFactor)),
       bearing: parseFloat($('bearing').value) || 0,
       sense: parseInt($('sense').value, 10) || 1
     };
@@ -761,7 +791,7 @@
     previewGroup.clearLayers();
     const p = circularParams();
     $('theory').textContent = state.passes.length ? 'Con lugares en «Pasar por», el circuito se construye con ellos: radio y dirección no se usan.'
-      : 'Circunferencia teórica ≈ ' + (2 * Math.PI * p.radius).toFixed(1) + ' km. La ruta real suele ser algo mayor.';
+      : '';
     if (!state.start) return;
     if (state.passes.length && !state.routes.length && (state.mode === 'circular' || state.end)) {
       const seq = state.mode === 'circular' ? [state.start, ...(state.passes.length === 1 ? loopThrough(state.passes[0], p.sense) : orderedPasses(p.sense)), state.start]
@@ -778,8 +808,8 @@
       L.polyline([[state.start.lat, state.start.lng], [state.end.lat, state.end.lng]], { color: '#1b6ca8', weight: 1, dashArray: '4 6', interactive: false }).addTo(previewGroup);
     }
   }
-  ['radius', 'bearing', 'sense'].forEach(id => $(id).addEventListener('input', () => { drawPreview(); save(); }));
-  ['profile', 'extra', 'nAlt', 'ascent', 'ascentMode', 'variety', 'search'].forEach(id => $(id).addEventListener('input', save));
+  ['dist', 'bearing', 'sense'].forEach(id => $(id).addEventListener('input', () => { drawPreview(); save(); }));
+  ['profile', 'extra', 'nAlt', 'ascent', 'ascentMode', 'prio', 'variety', 'search'].forEach(id => $(id).addEventListener('input', save));
 
   const customExtra = () => $('extra').value.trim().replace(/^&/, '');
   function applyLevel() {
@@ -1039,6 +1069,7 @@
       return true;
     } catch (e) {
       if (/^No se pudo contactar/.test(e.message) || e.transient) throw e;   // red o servidor ocupado: no se marca el perfil como malo
+      if (e.ferry) { profCheck.ok.add(key); return true; }                  // el tramo de prueba cayó en el mar: el perfil sí funciona
       profCheck.bad.add(key);
       return false;
     }
@@ -1084,9 +1115,9 @@
 
   // Prueba el perfil con los parámetros de «evitar carreteras»; si BRouter los rechaza, vuelve a probar sin ellos
   async function pickExtra(pf, base) {
-    const road = roadExtra();
-    if (road && await probeProfile(pf, joinExtra(base, road))) return { extra: joinExtra(base, road), roadOff: false };
-    if (await probeProfile(pf, base)) return { extra: base, roadOff: !!road };
+    const tiers = roadExtra();
+    for (const road of tiers) if (await probeProfile(pf, joinExtra(base, road))) return { extra: joinExtra(base, road), roadOff: false };
+    if (await probeProfile(pf, base)) return { extra: base, roadOff: tiers.length > 0 };
     return null;
   }
 
@@ -1136,10 +1167,13 @@
     if (!(v > 0)) return null;
     return { value: v, mode: $('ascentMode').value };
   }
+  let ascCal = 1;
+  try { const q = parseFloat(localStorage.getItem(CONFIG.calKey)); if (q >= 0.6 && q <= 1.8) ascCal = q; } catch (e) { /* sin almacenamiento */ }
   function ascentOf(res) {
-    if (res.ascend !== null && res.ascend !== undefined) return res.ascend;
+    if (res._dem && res._dem.phase === 'ok' && res._dem.P) return res._dem.P.asc;           // EU-DEM (el que se muestra en el panel)
+    if (res.ascend !== null && res.ascend !== undefined) return res.ascend * ascCal;
     const P = getProfile(res);
-    return P ? P.asc : null;
+    return P ? P.asc * ascCal : null;
   }
   function ascentOk(a, c) {
     if (a === null || a === undefined) return null;
@@ -1245,36 +1279,116 @@
     return cleanSpurs(r, pts.map(copyPt), profile, alt, extra, minPts);
   }
 
-  // Circular: BRouter no limita el desnivel, así que se reajusta el radio (el desnivel crece más o menos con él)
+  // Circular: BRouter no fija ni distancia ni desnivel, así que se reajusta el radio. Con desnivel, la prioridad
+  // (distancia / desnivel / equilibrado) decide hacia dónde se corrige cuando ambos objetivos no caben a la vez.
   async function fitCircular(v, extra, c, idx, total, myRun) {
-    const tgt = c.mode === 'max' ? c.value * CONFIG.ascentMaxFactor : c.value;
+    const D = v.params.dist, prio = c ? $('prio').value : 'dist';
+    const tgt = c ? (c.mode === 'max' ? c.value * CONFIG.ascentMaxFactor : c.value) : 0;
+    const dTol = (c && prio === 'asc') ? CONFIG.distTolAsc : CONFIG.distTol;
+    const evalFit = r => {
+      const len = r.lengthKm, a = c ? ascentOf(r) : null;
+      const dDev = Math.abs(len / D - 1), dOk = dDev <= dTol + 0.005;
+      const aOk = c && a !== null ? ascentOk(a, c) : true;
+      let aDev = 0;
+      if (c && a !== null) aDev = c.mode === 'max' ? Math.max(0, a - c.value) / c.value : Math.abs(a - c.value) / c.value;
+      const ok = dOk && (prio === 'dist' ? true : aOk);
+      const score = prio === 'dist' ? dDev * 10 + aDev : prio === 'asc' ? aDev * 10 + dDev + (dOk ? 0 : 5) : dDev * dDev + aDev * aDev;
+      return { len, a, ok, score, dOk };
+    };
     let radius = v.params.radius, best = null;
-    for (let it = 0; it < CONFIG.ascentMaxIter; it++) {
-      const p = Object.assign({}, v.params, { radius });
-      const w = circularWaypoints(state.start, p, v.offset);
-      const pts = [state.start, ...w.aux, state.start].map(copyPt);
-      setStatus('Calculando ' + (idx + 1) + ' de ' + total + ' · ajuste de desnivel (intento ' + (it + 1) + ')…');
-      let r;
-      try { r = await fetchBRouter(pts, v.profile, 0, extra); }
-      catch (e) { if (!best) throw e; break; }
+    const iters = c ? CONFIG.fitIterAsc : CONFIG.fitIter, hist = [];
+    for (let it = 0; it < iters; it++) {
+      const p = Object.assign({}, v.params, { radius, fitted: true, dTol });
+      let r, pts;
+      if (it === 0 && v.seed) { r = v.seed.r; pts = v.seed.points.map(copyPt); }   // ruta ya calculada al explorar direcciones
+      else {
+        const w = circularWaypoints(state.start, p, v.offset);
+        pts = [state.start, ...w.aux, state.start].map(copyPt);
+        setStatus('Calculando ' + (idx + 1) + ' de ' + total + ' · ajuste a ' + Math.round(D) + ' km' + (c ? ' y ' + c.value + ' m' : '') + ' (intento ' + (it + 1) + ')…');
+        try { r = await fetchBRouter(pts, v.profile, 0, extra); }
+        catch (e) {
+          if (myRun !== runId) return null;
+          if (!best || !hist.length || e.transient || /^No se pudo contactar/.test(e.message)) { if (!best) throw e; break; }
+          radius = (radius + hist[hist.length - 1].R) / 2;     // ese radio no es viable (mar, sin caminos…): se retrocede a medio camino
+          await sleep(CONFIG.delayMs);
+          continue;
+        }
+        if (myRun !== runId) return null;
+      }
+      let spurs = 0;                                      // se limpian los ramales ANTES de medir: se ajusta la ruta que realmente queda
+      try { const f = await cleanSpurs(r, pts, v.profile, 0, extra); r = f.r; pts = f.points; spurs = f.removed; } catch (e) { /* se mide sin limpiar */ }
       if (myRun !== runId) return null;
-      const a = ascentOf(r);
-      const ok = a === null ? true : ascentOk(a, c);
-      const cand = { r, points: pts, params: p, ok, score: a === null ? 0 : Math.abs(a - tgt) };
+      const ev = evalFit(r);
+      hist.push({ R: radius, L: ev.len });
+      const cand = { r, points: pts, params: p, ok: ev.ok, score: ev.score, spurs };
       if (!best || (cand.ok && !best.ok) || (cand.ok === best.ok && cand.score < best.score)) best = cand;
-      if (ok || a === null || a <= 0) break;
-      const nr = Math.max(1, Math.min(60, radius * Math.max(0.5, Math.min(2, tgt / a))));
-      if (Math.abs(nr - radius) < 0.2) break;
+      if (ev.ok) break;
+      const fD = D / ev.len;
+      let fA = (c && ev.a !== null && ev.a > 0) ? tgt / ev.a : 1;
+      if (c && c.mode === 'max' && ev.a !== null && ev.a <= c.value) fA = 1;
+      const f = !c || prio === 'dist' ? fD
+        : prio === 'asc' ? Math.min(Math.max(fA, (1 - dTol * 0.97) * fD), (1 + dTol * 0.97) * fD)
+        : Math.sqrt(fD * fA);
+      const want = ev.len * f;                            // longitud que se busca en el siguiente intento
+      let nr = radius * f;
+      const prev = hist.length > 1 ? hist[hist.length - 2] : null;
+      if (prev && Math.abs(radius - prev.R) > 0.05) {     // secante: usa la respuesta real longitud/radio de los dos últimos intentos
+        const k = (ev.len - prev.L) / (radius - prev.R);
+        if (k > 0.5) nr = radius + (want - ev.len) / k;
+      }
+      nr = Math.max(0.8, Math.min(60, Math.max(radius * 0.5, Math.min(radius * 2, nr))));
+      if (Math.abs(nr / radius - 1) < 0.02) break;
       radius = nr;
       await sleep(CONFIG.delayMs);
     }
-    if (best && myRun === runId) {                        // limpieza de ramales solo en la elegida (ahorra peticiones)
-      const f = await cleanSpurs(best.r, best.points, v.profile, 0, extra);
-      best.r = f.r; best.points = f.points; best.spurs = f.removed;
-      const a = ascentOf(best.r);
-      best.ok = a === null ? true : ascentOk(a, c);
+    if (best && myRun === runId) {
+      const ratio = best.r.lengthKm / (2 * Math.PI * best.params.radius);          // aprende la relación real/teórica para el siguiente cálculo
+      if (ratio > 0.8 && ratio < 2.5) { distFactor = Math.min(2, Math.max(1.0, distFactor * 0.5 + ratio * 0.5)); try { localStorage.setItem(CONFIG.factorKey, String(distFactor)); } catch (e) { /* ignorado */ } }
     }
     return best;
+  }
+
+  // Con desnivel: antes de ajustar se prueban varios rumbos (sierra, costa, valle…) y se eligen los de pendiente media
+  // (m/km) más parecida a la pedida; solo con el radio no se puede cumplir a la vez distancia y desnivel.
+  async function scoutCircular(profile, extra, c, myRun) {
+    const p0 = circularParams(), D = p0.dist, A = c.value, out = [], B = CONFIG.scoutBearings;
+    for (let k = 0; k < B.length; k++) {
+      const b = B[k] + rnd(-15, 15);
+      const w = circularWaypoints(state.start, p0, b);
+      const pts = [state.start, ...w.aux, state.start].map(copyPt);
+      setStatus('Explorando direcciones para ' + A + ' m de desnivel: ' + (k + 1) + ' de ' + B.length + ' (hacia ' + compass(w.bearing) + ')…');
+      try {
+        const r = await fetchBRouter(pts, profile, 0, extra);
+        if (myRun !== runId) return null;
+        const a = ascentOf(r), len = r.lengthKm;
+        if (a !== null && len > 0) {
+          const SS = getSurface(r), tr = SS && SS.total ? SS.traffic / SS.total * 100 : 0;
+          out.push({ b, w, r, pts, p: p0, rate: a / len, score: Math.abs(a * D / len - A) / A + tr / 200 });   // desnivel previsto a la distancia pedida
+        }
+      } catch (e) {
+        if (myRun !== runId) return null;
+        if (e.transient || /^No se pudo contactar/.test(e.message)) throw e;      // servidor saturado o sin red
+      }                                                   // rumbo imposible (mar, sin caminos): se descarta
+      if (k < B.length - 1) await sleep(CONFIG.delayMs);
+    }
+    const byAngle = out.slice().sort((x, y) => x.b - y.b), target = A / D, picks = [];
+    for (const x of out.slice().sort((x, y) => x.score - y.score)) {
+      // si un rumbo vecino queda al otro lado de la pendiente pedida, se interpola el rumbo entre ambos (sin semilla: se recalcula)
+      let pick = { ...x, seed: true };
+      const k = byAngle.indexOf(x), nb = [byAngle[(k + 1) % byAngle.length], byAngle[(k - 1 + byAngle.length) % byAngle.length]];
+      for (const y of nb) {
+        if (!y || y === x) continue;
+        let gap = ((y.b - x.b) % 360 + 540) % 360 - 180;
+        if (Math.abs(gap) > 90 || (x.rate - target) * (y.rate - target) >= 0) continue;
+        const t = (x.rate - target) / (x.rate - y.rate);
+        pick = { ...x, b: x.b + gap * t, seed: false, score: x.score * (1 - t) };
+        break;
+      }
+      if (picks.some(q => Math.abs(((q.b - pick.b) % 360 + 540) % 360 - 180) < 20)) pick = { ...x, seed: true };   // evita dos variantes casi iguales
+      if (picks.some(q => Math.abs(((q.b - pick.b) % 360 + 540) % 360 - 180) < 20)) continue;
+      picks.push(pick);
+    }
+    return picks;
   }
 
   // Si falla el primer cálculo, distingue entre perfil inexistente y circuito demasiado largo/complejo
@@ -1325,11 +1439,22 @@
     const nWanted = parseInt($('nAlt').value, 10) || 1;
     const searching = $('search').value === 'auto';
     let K = nWanted;
-    if (searching && !(constraint && state.mode === 'circular' && !state.passes.length)) K = Math.min(nWanted + 1, 4);   // con ajuste de desnivel cada candidata ya cuesta 2-4 peticiones
+    if (searching && !(state.mode === 'circular' && !state.passes.length)) K = Math.min(nWanted + 1, 4);   // con ajuste de desnivel cada candidata ya cuesta 2-4 peticiones
     if (state.mode === 'ab' && !(VARIETY[$('variety').value] || VARIETY.media).perp) K = Math.min(K, 4);   // BRouter solo ofrece alternativas 0-3
-    const variants = buildVariants(setup.profile, K);
+    let variants = buildVariants(setup.profile, K);
+    if (state.mode === 'circular' && !state.passes.length && constraint) {
+      let sc = null;
+      try { sc = await scoutCircular(setup.profile, extra, constraint, myRun); }
+      catch (e) { if (myRun === runId) { setStatus(e.message + (e.transient ? BUSY_MSG : ''), true, e.url); btn.disabled = false; } return; }
+      if (myRun !== runId) return;
+      if (sc && sc.length) variants = sc.slice(0, nWanted).map((x, i) => ({
+        label: 'Ruta ' + (i + 1) + ' · hacia ' + compass(x.b), points: x.pts, alt: 0, profile: setup.profile,
+        params: Object.assign({}, x.p, x.seed ? {} : { radius: x.p.radius * Math.min(2, Math.max(0.5, x.p.dist / x.r.lengthKm)) }),
+        offset: x.b, seed: x.seed ? { r: x.r, points: x.pts } : null
+      }));
+    }
     let skipped = 0, spursTotal = 0;
-    const failed = [], cands = [];
+    const failed = []; let cands = [];
     const addRoute = (v, r, points, params) => state.routes.push({
       label: (batch > 1 ? 'C' + batch + ' · ' : '') + v.label, color: CONFIG.colors[state.routes.length % CONFIG.colors.length],
       mode: state.mode, profile: v.profile, extra, params, constraint, waypoints: points, result: r, history: [], edited: false
@@ -1341,11 +1466,12 @@
       setStatus((searching ? 'Evaluando candidata ' : 'Calculando ') + (i + 1) + ' de ' + variants.length + ' con BRouter… (' + took() + ')' +
         (cands.length ? ' · mejor hasta ahora: ' + Math.round(Math.min(...cands.map(c => c.traffic))) + ' % vías con tráfico' : ''));
       try {
-        let r, points = v.points, params = v.params;
-        if (state.mode === 'circular' && constraint && !state.passes.length) {
+        let r, points = v.points, params = v.params, fitOk = true;
+        if (state.mode === 'circular' && !state.passes.length) {
           const fit = await fitCircular(v, extra, constraint, i, variants.length, myRun);
           if (myRun !== runId) return;
           ({ r, points, params } = fit);
+          fitOk = fit.ok;
           spursTotal += fit.spurs || 0;
         } else if (state.mode === 'circular') {
           const f = await fetchNoSpurs(v.points, v.profile, v.alt, extra);
@@ -1360,7 +1486,7 @@
           const SS = getSurface(r), traffic = SS ? SS.traffic / SS.total * 100 : 50;
           const okAsc = constraint ? ascentOk(ascentOf(r), constraint) : true;
           const spur = findSpur(r.coords, 120, points);
-          cands.push({ v, r, points, params, traffic, score: traffic + (okAsc === false ? 60 : 0) + (spur ? 100 : 0) });
+          cands.push({ v, r, points, params, traffic, good: okAsc !== false && fitOk !== false, score: traffic + (okAsc === false ? 60 : 0) + (fitOk === false ? 60 : 0) + (spur ? 100 : 0) });
         } else {
           addRoute(v, r, points, params);
           renderRoutes();
@@ -1375,7 +1501,9 @@
     }
     if (myRun !== runId) return;
 
-    if (cands.length) {                                   // se quedan las candidatas con menos tráfico (y que cumplan el desnivel)
+    let dropped = 0;
+    if (cands.some(c => c.good)) { const n0 = cands.length; cands = cands.filter(c => c.good); dropped = n0 - cands.length; }   // si alguna cumple, fuera las que no
+    if (cands.length) {                                   // se quedan las candidatas con menos tráfico (y que cumplan distancia y desnivel)
       cands.sort((a, b) => a.score - b.score);
       cands.slice(0, nWanted).forEach(c => addRoute(c.v, c.r, c.points, c.params));
       renderRoutes();
@@ -1402,6 +1530,7 @@
     if (setup.fellBack) notes.push('No se pudo usar el perfil «' + setup.wanted + '»' + (setup.reason ? ' (' + setup.reason + ')' : '') + '. Se ha usado «' + setup.profile + '».');
     if (setup.roadOff) notes.push('BRouter no aceptó los ajustes de «Evitar carreteras»; se ha calculado sin ellos.');
     if (spursTotal) notes.push('Se han descartado ' + spursTotal + ' punto(s) auxiliar(es) que obligaban a ir y volver por el mismo camino (ramales sin salida).');
+    if (dropped) notes.push(dropped + ' variante(s) descartada(s) por no cumplir distancia o desnivel.');
     if (skipped) notes.push(skipped + ' variante(s) idéntica(s) a otra omitida(s).');
     if (failed.length) notes.push('No disponibles:\n' + failed.map(f => f.v.label + ': ' + f.e.message).join('\n'));
     setStatus(notes.join('\n'), failed.length > 0);
@@ -1454,10 +1583,9 @@
       const d = document.createElement('div');
       d.className = 'card' + (i === state.selected ? ' sel' : '');
       let sub = '';
-      if (r.mode === 'circular' && !r.edited && r.params) {
-        const th = 2 * Math.PI * r.params.radius;
-        const diff = (r.result.lengthKm / th - 1) * 100;
-        sub = '<div class="s">Radio ' + r.params.radius.toFixed(1) + ' km · Teórica ' + th.toFixed(1) + ' km (' + (diff >= 0 ? '+' : '') + diff.toFixed(0) + ' %)</div>';
+      if (r.mode === 'circular' && !r.edited && r.params && r.params.fitted) {
+        const dv = (r.result.lengthKm / r.params.dist - 1) * 100, out = Math.abs(dv) > (r.params.dTol || CONFIG.distTol) * 100 + 0.5;
+        sub = '<div class="s" style="color:' + (out ? 'var(--err)' : '#2f7d32') + '">' + (out ? '⚠ ' : '✓ ') + 'Objetivo ' + r.params.dist.toFixed(0) + ' km · real ' + r.result.lengthKm.toFixed(1) + ' km (' + (dv >= 0 ? '+' : '') + dv.toFixed(0) + ' %)</div>';
       }
       let cons = '';
       if (r.constraint) {
@@ -1489,6 +1617,7 @@
       if (sel) { if (r._case) r._case.bringToFront(); r._line.bringToFront(); }
     });
     drawArrows();
+    raiseSteep();
   }
 
   // ---------- Flechas de sentido de la ruta ----------
@@ -1846,11 +1975,11 @@
   }
   $('btnUndo').addEventListener('click', doUndo);
 
-  // Quita los puntos de paso que provocan entradas y salidas (como edición: se puede deshacer)
-  $('btnFixSpurs').addEventListener('click', async () => {
-    const r = selRoute();
-    if (!r) return;
-    if (r._busy) { busyToast(); return; }
+  // Quita solo (sin botón) los puntos de paso que provocan entradas y salidas por el mismo camino.
+  // Se intenta una vez por trazado; queda como una edición más, así que «Deshacer» lo revierte.
+  async function autoFixSpurs(r) {
+    if (!r || r._busy || r.result._spurTried) return;
+    r.result._spurTried = true;
     r._busy = true; updateUndo();
     toast('Quitando entradas y salidas…', false, 0);
     try {
@@ -1860,12 +1989,14 @@
         pushHistory(r);
         r.waypoints = f.points; r.result = f.r;
         toast('Quitado(s) ' + f.removed + ' punto(s) de paso · ' + f.r.lengthKm.toFixed(1) + ' km', false, 3000);
-      } else toast('No se ha podido quitar: el ramal no depende de un punto de paso o BRouter no respondió', true, 5000);
-    } finally {
+        f.r._spurTried = true;
+      } else toast('Hay un tramo de ida y vuelta que no se ha podido quitar automáticamente', true, 4000);
+    } catch (e) { /* BRouter no respondió: se deja como estaba */ }
+    finally {
       r._busy = false; updateUndo();
       if (state.routes.includes(r)) refreshRoute(r);
     }
-  });
+  }
 
   $('btnClearPend').addEventListener('click', () => {
     const r = selRoute();
@@ -1893,7 +2024,702 @@
   })();
   const hoverMarker = L.marker([0, 0], { icon: bikeIcon, interactive: false, keyboard: false, zIndexOffset: 1000 });
 
+
+  // =====================================================================================
+  // FASE 1 · Perfil de altitud preciso (OpenTopoData, EU-DEM 25 m) y pendientes
+  // =====================================================================================
+  const DEM = {
+    url: 'https://api.opentopodata.org/v1/eudem25m',
+    stepM: 50,                 // un punto cada ~50 m de ruta
+    perCall: 100,              // puntos por llamada (máximo del servicio)
+    gapMs: 1100,               // separación mínima entre llamadas (límite: 1 por segundo)
+    dailyLimit: 1000, warnAt: 900,
+    cacheKey: 'rutasMtb.dem.v1', quotaKey: 'rutasMtb.demq.v1', cacheMax: 25,
+    usePost: true,             // si el POST falla por red/CORS se pasa a GET
+    minLenM: 100,              // un tramo duro debe medir al menos esto
+    thrDefault: 12,
+    limitByLevel: { facil: 10, media: 15, dificil: 20, enduro: Infinity }   // pendiente máxima orientativa por nivel (%)
+  };
+  const LEVEL_NAMES = { facil: 'Fácil', media: 'Media', dificil: 'Difícil', enduro: 'Enduro' };
+  const steepGroup = L.layerGroup().addTo(map);
+  map.attributionControl.addAttribution('Altitudes © EU-DEM (Copernicus) vía OpenTopoData');
+  let demAbort = null, demTimer = null, demLast = 0;
+
+  const slopeThr = () => { const v = parseFloat($('slopeThr').value); return v >= 3 && v <= 60 ? v : DEM.thrDefault; };
+  class DemError extends Error { constructor(msg, kind) { super(msg); this.kind = kind; } }
+  const sleepAb = (ms, signal) => new Promise((res, rej) => {
+    if (signal && signal.aborted) { rej(new DOMException('abort', 'AbortError')); return; }
+    const t = setTimeout(res, ms);
+    if (signal) signal.addEventListener('abort', () => { clearTimeout(t); rej(new DOMException('abort', 'AbortError')); }, { once: true });
+  });
+
+  function cyrb53(str) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0, ch; i < str.length; i++) {
+      ch = str.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return 4294967296 * (2097151 & h2) + (h1 >>> 0);
+  }
+  function geomHash(coords) {
+    let t = '';
+    for (const c of coords) t += c[0].toFixed(5) + ',' + c[1].toFixed(5) + ';';
+    return cyrb53(t).toString(36) + '-' + coords.length;
+  }
+
+  // ---- cuota diaria (UTC) y caché en localStorage
+  const utcDay = () => new Date().toISOString().slice(0, 10);
+  function quotaGet() {
+    try { const q = JSON.parse(localStorage.getItem(DEM.quotaKey) || 'null'); if (q && q.day === utcDay()) return q; } catch (e) { /* sin almacenamiento */ }
+    return { day: utcDay(), n: 0 };
+  }
+  function quotaAdd(k) {
+    const q = quotaGet(); q.n += k;
+    try { localStorage.setItem(DEM.quotaKey, JSON.stringify(q)); } catch (e) { /* ignorado */ }
+    return q.n;
+  }
+  function demCacheRead() { try { return JSON.parse(localStorage.getItem(DEM.cacheKey) || '{}') || {}; } catch (e) { return {}; } }
+  function demCacheGet(h) { const c = demCacheRead(); return c[h] && Array.isArray(c[h].e) ? c[h] : null; }
+  function demCacheDel(h) { const c = demCacheRead(); if (c[h]) { delete c[h]; try { localStorage.setItem(DEM.cacheKey, JSON.stringify(c)); } catch (e) { /* ignorado */ } } }
+  function demCachePut(h, arr) {
+    const c = demCacheRead(); c[h] = { t: Date.now(), e: arr };
+    const keys = Object.keys(c).sort((a, b) => c[a].t - c[b].t);
+    while (keys.length > DEM.cacheMax) delete c[keys.shift()];
+    try { localStorage.setItem(DEM.cacheKey, JSON.stringify(c)); }
+    catch (e1) { try { localStorage.setItem(DEM.cacheKey, JSON.stringify({ [h]: c[h] })); } catch (e2) { /* sin espacio: no se guarda */ } }
+  }
+
+  // ---- muestreo de la ruta cada ~50 m
+  function demSamples(res) {
+    const c = res.coords, n = c.length;
+    if (!c || n < 2) return null;
+    const cd = new Array(n); cd[0] = 0;
+    for (let i = 1; i < n; i++) cd[i] = cd[i - 1] + haversineKm({ lat: c[i - 1][1], lng: c[i - 1][0] }, { lat: c[i][1], lng: c[i][0] });
+    const total = cd[n - 1];
+    if (!(total > 0)) return null;
+    const step = Math.max(DEM.stepM / 1000, total / 3000);            // tope de ~3.000 muestras en rutas muy largas
+    const m = Math.max(2, Math.ceil(total / step) + 1);
+    const pts = [], d = [], eb = [];
+    let j = 0, hasB = false;
+    for (let k = 0; k < m; k++) {
+      const t = k === m - 1 ? total : k * step;
+      while (j < n - 2 && cd[j + 1] < t) j++;
+      const seg = cd[j + 1] - cd[j], f = seg > 0 ? Math.min(1, Math.max(0, (t - cd[j]) / seg)) : 0;
+      pts.push({ lat: c[j][1] + (c[j + 1][1] - c[j][1]) * f, lng: c[j][0] + (c[j + 1][0] - c[j][0]) * f });
+      d.push(t);
+      const z0 = parseFloat(c[j][2]), z1 = parseFloat(c[j + 1][2]);
+      if (isFinite(z0) && isFinite(z1)) { eb.push(z0 + (z1 - z0) * f); hasB = true; } else eb.push(null);
+    }
+    return { pts, d, eb: hasB ? eb : null, total, step, cd };
+  }
+
+  // ---- llamadas a OpenTopoData
+  async function demChunk(pts, signal) {
+    const loc = pts.map(p => p.lat.toFixed(5) + ',' + p.lng.toFixed(5)).join('|');
+    let resp = null;
+    try {
+      if (DEM.usePost) {
+        try {
+          resp = await fetch(DEM.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ locations: loc }), signal });
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          DEM.usePost = false;                                         // posible bloqueo CORS del POST: se prueba con GET
+        }
+      }
+      if (!resp) resp = await fetch(DEM.url + '?locations=' + encodeURIComponent(loc), { signal });
+    } catch (e) {
+      if (e.name === 'AbortError') throw e;
+      throw new DemError('sin conexión con el servicio (red o bloqueo del navegador)', 'net');
+    }
+    let j = null;
+    try { j = await resp.json(); } catch (e) { /* sin cuerpo JSON */ }
+    if (resp.status === 429) throw new DemError('demasiadas peticiones (límite de 1 por segundo o cuota diaria agotada)', 'quota');
+    if (!resp.ok || !j || !Array.isArray(j.results)) throw new DemError('el servicio respondió ' + resp.status + (j && j.error ? ' · ' + j.error : ''), resp.status >= 500 ? 'server' : 'bad');
+    if (j.results.length !== pts.length) throw new DemError('respuesta incompleta del servicio', 'bad');
+    return j.results.map(r => (r && typeof r.elevation === 'number' && isFinite(r.elevation)) ? r.elevation : null);
+  }
+
+  async function demFetchAll(smp, hash, onProg, signal) {
+    const cached = demCacheGet(hash);
+    if (cached && cached.e.length === smp.pts.length) return { e: cached.e, fromCache: true };
+    const calls = Math.ceil(smp.pts.length / DEM.perCall), q = quotaGet();
+    if (q.n + calls > DEM.dailyLimit) throw new DemError('cuota diaria agotada (' + q.n + ' de ' + DEM.dailyLimit + ' llamadas usadas hoy)', 'quota');
+    const out = [];
+    for (let i = 0; i < smp.pts.length; i += DEM.perCall) {
+      let part = null, tries = 0;
+      while (!part) {
+        const wait = demLast + DEM.gapMs - Date.now();
+        if (wait > 0) await sleepAb(wait, signal);
+        if (signal && signal.aborted) throw new DOMException('abort', 'AbortError');
+        demLast = Date.now();
+        quotaAdd(1);
+        try { part = await demChunk(smp.pts.slice(i, i + DEM.perCall), signal); }
+        catch (e) { if (e.kind === 'quota' && tries++ < 1) { await sleepAb(2500, signal); continue; } throw e; }
+      }
+      out.push(...part);
+      if (onProg) onProg(Math.min(out.length, smp.pts.length), smp.pts.length);
+    }
+    demCachePut(hash, out.map(v => v === null ? null : Math.round(v * 10) / 10));
+    return { e: out, fromCache: false };
+  }
+
+  // ---- perfil, desnivel y pendientes
+  function fillGaps(e) {
+    const n = e.length; let last = -1;
+    for (let i = 0; i < n; i++) {
+      if (e[i] === null) continue;
+      if (last < 0) { for (let k = 0; k < i; k++) e[k] = e[i]; }
+      else if (i - last > 1) { for (let k = last + 1; k < i; k++) e[k] = e[last] + (e[i] - e[last]) * (k - last) / (i - last); }
+      last = i;
+    }
+    if (last >= 0) for (let k = last + 1; k < n; k++) e[k] = e[last];
+    return last >= 0;
+  }
+
+  function demBuild(smp, elev, source) {
+    const n = smp.pts.length, e = elev.slice();
+    if (e.filter(v => v === null).length > n * 0.3) throw new DemError('no hay datos de altitud en esta zona (EU-DEM cubre Europa)', 'nodata');
+    if (!fillGaps(e)) throw new DemError('sin datos de altitud', 'nodata');
+    const sm = e.map((_, i) => (e[Math.max(0, i - 1)] + e[i] + e[Math.min(n - 1, i + 1)]) / 3);    // suavizado de 3 puntos
+    let asc = 0, desc = 0, ref = sm[0], min = sm[0], max = sm[0];
+    for (let i = 1; i < n; i++) {                       // histéresis de 3 m, igual que el perfil de BRouter
+      const v = sm[i];
+      if (v < min) min = v; if (v > max) max = v;
+      if (v - ref >= 3) { asc += v - ref; ref = v; } else if (ref - v >= 3) { desc += ref - v; ref = v; }
+    }
+    const d = smp.d, slope = new Array(n);
+    let maxUp = 0, maxDown = 0, upDz = 0, upLen = 0;
+    for (let i = 0; i < n; i++) {                       // pendiente sobre ~100 m (±1 muestra)
+      const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1), dd = (d[b] - d[a]) * 1000;
+      slope[i] = dd > 0 ? (sm[b] - sm[a]) / dd * 100 : 0;
+      if (slope[i] > maxUp) maxUp = slope[i];
+      if (-slope[i] > maxDown) maxDown = -slope[i];
+    }
+    for (let i = 1; i < n; i++) {                       // pendiente media en subida: tramos de más del 2 %
+      const dl = (d[i] - d[i - 1]) * 1000, dz = sm[i] - sm[i - 1];
+      if (dl > 0 && dz / dl * 100 >= 2) { upDz += dz; upLen += dl; }
+    }
+    return {
+      d, e: sm, total: smp.total, step: smp.step, asc, desc, min, max, slope, maxUp, maxDown,
+      meanUp: upLen > 0 ? upDz / upLen * 100 : 0, pos: smp.pts, source,
+      fromCoord: ci => Math.min(n - 1, Math.max(0, Math.round(smp.cd[Math.min(ci, smp.cd.length - 1)] / smp.step)))
+    };
+  }
+
+  // Tramos duros: pendiente ≥ umbral (en el mismo sentido), uniendo huecos de una muestra y exigiendo ≥ 100 m
+  function steepRuns(P, thr) {
+    const n = P.d.length, sg = i => P.slope[i] >= thr ? 1 : (P.slope[i] <= -thr ? -1 : 0);
+    const raw = [];
+    for (let i = 0; i < n;) {
+      const g = sg(i);
+      if (!g) { i++; continue; }
+      let j = i; while (j + 1 < n && sg(j + 1) === g) j++;
+      raw.push({ a: i, b: j, dir: g }); i = j + 1;
+    }
+    const merged = [];
+    for (const r of raw) {
+      const L1 = merged[merged.length - 1];
+      if (L1 && L1.dir === r.dir && r.a - L1.b <= 2) L1.b = r.b; else merged.push({ a: r.a, b: r.b, dir: r.dir });
+    }
+    const out = [];
+    for (const r of merged) {
+      const len = (r.b - r.a + 1) * P.step * 1000;
+      if (len < DEM.minLenM) continue;
+      let mx = 0;
+      for (let i = r.a; i <= r.b; i++) mx = Math.max(mx, Math.abs(P.slope[i]));
+      const dd = (P.d[r.b] - P.d[r.a]) * 1000;
+      out.push({ a: r.a, b: r.b, dir: r.dir, len, max: mx, mean: dd > 0 ? Math.abs(P.e[r.b] - P.e[r.a]) / dd * 100 : mx, km0: P.d[r.a], km1: P.d[r.b] });
+    }
+    return out;
+  }
+
+  function steepSvg(P, X, Y) {                          // tramos duros resaltados en el gráfico
+    if (!P.slope) return '';
+    return steepRuns(P, slopeThr()).map(ru => {
+      let pts = '';
+      for (let i = ru.a; i <= ru.b; i++) pts += X(P.d[i]).toFixed(1) + ',' + Y(P.e[i]).toFixed(1) + ' ';
+      return '<polyline points="' + pts + '" fill="none" stroke="' + (ru.dir > 0 ? '#ffd400' : '#4dd0e1') + '" stroke-width="3.4" stroke-linecap="round"/>';
+    }).join('');
+  }
+
+  // ---- validación frente a límite de desnivel y dificultad elegida
+  function demChecks(P) {
+    const out = [], c = getAscentConstraint(), lv = $('level').value;
+    if (c) {
+      const ok = ascentOk(P.asc, c), a = Math.round(P.asc);
+      if (ok === false) out.push(['warn', c.mode === 'max'
+        ? 'El desnivel + (' + a + ' m) supera el máximo de ' + c.value + ' m en ' + (a - c.value) + ' m.'
+        : 'El desnivel + (' + a + ' m) se aparta más de un ' + Math.round(CONFIG.ascentTol * 100) + ' % del objetivo de ' + c.value + ' m.']);
+      else if (ok === true) out.push(['ok', 'Desnivel + (' + a + ' m) dentro del límite de ' + c.value + ' m.']);
+    }
+    const lim = DEM.limitByLevel[lv];
+    if (lim !== undefined && isFinite(lim)) {
+      const worst = Math.max(P.maxUp, P.maxDown);
+      out.push(worst > lim
+        ? ['warn', 'La pendiente máxima (' + worst.toFixed(1) + ' %) supera lo previsto para el nivel «' + LEVEL_NAMES[lv] + '» (' + lim + ' %).']
+        : ['ok', 'Pendientes acordes al nivel «' + LEVEL_NAMES[lv] + '» (máx. ' + worst.toFixed(1) + ' % ≤ ' + lim + ' %).']);
+    }
+    return out;
+  }
+
+  // ---- estado por ruta (se guarda en el resultado: al editar la ruta se descarta solo)
+  const demGood = r => { const s = r && r.result && r.result._dem; return s && s.phase === 'ok' ? s.P : null; };
+  function demProfileFor(r) {                           // perfil que dibuja el gráfico
+    const s = r.result._dem;
+    if (s && s.phase === 'ok') return s.P;
+    if (s && s.phase === 'fallback' && s.P0) return s.P0;
+    return getProfile(r.result);
+  }
+
+  function renderStats(r) {                             // tarjetas de datos de la ruta seleccionada (devuelve el desnivel +)
+    const res = r.result, P = getProfile(res), DP = demGood(r), S = DP || P;
+    const asc = DP ? DP.asc : ascentOf(res);
+    const stats = [
+      ['Distancia', res.lengthKm.toFixed(1) + ' km'],
+      ['Desnivel +', asc !== null ? Math.round(asc) + ' m' : '—'],
+      ['Desnivel −', S ? Math.round(S.desc) + ' m' : '—'],
+      ['Altitud mín / máx', S ? Math.round(S.min) + ' / ' + Math.round(S.max) + ' m' : '—']
+    ];
+    $('stats').innerHTML = stats.map(x => '<div class="stat"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>').join('');
+    return asc;
+  }
+
+  function raiseSteep() { try { steepGroup.eachLayer(l => { if (l.bringToFront) l.bringToFront(); }); } catch (e) { /* aún no inicializado */ } }
+
+  function demDrawSteep(P, runs) {
+    steepGroup.clearLayers();
+    runs.forEach(ru => {
+      const ll = [];
+      for (let i = ru.a; i <= ru.b; i++) ll.push([P.pos[i].lat, P.pos[i].lng]);
+      if (ll.length < 2) return;
+      L.polyline(ll, { color: '#111', weight: 12, opacity: .85, interactive: false, lineCap: 'round' }).addTo(steepGroup);
+      L.polyline(ll, { color: ru.dir > 0 ? '#ffd400' : '#4dd0e1', weight: 7, opacity: 1, interactive: false, lineCap: 'round' }).addTo(steepGroup);
+    });
+    raiseSteep();
+  }
+
+  let steepRunsShown = [], steepP = null;
+  function demRender(r) {
+    const res = r.result, st = res._dem;
+    if (!st) return;
+    const P = st.P || st.P0, final = st.phase === 'ok' || st.phase === 'fallback', thr = slopeThr();
+    const status = $('demStatus');
+    let txt, err = false;
+    if (st.phase === 'loading') txt = 'Consultando altitudes en OpenTopoData… ' + st.done + ' / ' + st.total + ' puntos.';
+    else if (st.phase === 'ok') txt = 'Altitudes de OpenTopoData (EU-DEM 25 m), un punto cada ' + Math.round(st.P.step * 1000) + ' m' + (st.fromCache ? ' · desde la caché del móvil' : '') + '.';
+    else if (st.phase === 'fallback') { txt = 'OpenTopoData no disponible: ' + st.err + '. Se usa la altitud de BRouter.'; err = true; }
+    else txt = $('demAuto').checked ? 'Pendiente de consultar las altitudes…' : 'Altitud provisional de BRouter. Pulsa «Calcular altitudes» para la precisa.';
+    const q = quotaGet();
+    if (q.n >= DEM.warnAt) txt += ' ⚠ Cuota diaria: ' + q.n + ' de ' + DEM.dailyLimit + ' llamadas.';
+    status.textContent = txt; status.className = err ? 'err' : '';
+    $('demSum').textContent = 'Perfil y pendientes' + (P ? ' · D+ ' + Math.round(P.asc) + ' m · máx ' + Math.max(P.maxUp, P.maxDown).toFixed(0) + ' %' : '');
+
+    const runs = final && P ? steepRuns(P, thr) : [];
+    const hardKm = runs.reduce((a, x) => a + x.len, 0) / 1000;
+    $('demStats').innerHTML = P ? [
+      ['Desnivel +', Math.round(P.asc) + ' m'], ['Desnivel −', Math.round(P.desc) + ' m'],
+      ['Pendiente máx. subida', P.maxUp.toFixed(1) + ' %'], ['Pendiente máx. bajada', P.maxDown.toFixed(1) + ' %'],
+      ['Pendiente media subiendo', P.meanUp.toFixed(1) + ' %'],
+      ['Tramos ≥ ' + thr + ' %', final ? runs.length + (runs.length ? ' · ' + hardKm.toFixed(1) + ' km' : '') : '…']
+    ].map(x => '<div class="stat"><span>' + x[0] + '</span><b>' + x[1] + '</b></div>').join('') : '';
+    $('demWarn').innerHTML = final && P ? demChecks(P).map(w => '<div class="demw ' + w[0] + '">' + (w[0] === 'warn' ? '⚠ ' : '✓ ') + w[1] + '</div>').join('') : '';
+
+    steepRunsShown = runs; steepP = P;
+    $('steepList').innerHTML = runs.slice().sort((a, b) => b.max - a.max).slice(0, 10).map(ru =>
+      '<div class="steepRow" data-k="' + runs.indexOf(ru) + '"><span class="dir" style="color:' + (ru.dir > 0 ? '#b38f00' : '#0097a7') + '">' + (ru.dir > 0 ? '▲' : '▼') + '</span>' +
+      '<span>km ' + ru.km0.toFixed(1) + '–' + ru.km1.toFixed(1) + ' · ' + Math.round(ru.len) + ' m · media ' + ru.mean.toFixed(1) + ' % · máx ' + ru.max.toFixed(1) + ' %</span></div>').join('');
+    const btn = $('btnDem');
+    btn.textContent = st.phase === 'ok' ? 'Recalcular altitudes' : (st.phase === 'fallback' ? 'Reintentar altitudes' : 'Calcular altitudes');
+    btn.disabled = st.phase === 'loading';
+    if (final && P) demDrawSteep(P, runs); else steepGroup.clearLayers();
+  }
+
+  function demCancel() {
+    clearTimeout(demTimer);
+    if (demAbort) { demAbort.abort(); demAbort = null; }
+    steepGroup.clearLayers();
+  }
+
+  async function demRun(r, force) {
+    const res = r.result, st = res._dem;
+    const smp = demSamples(res);
+    if (!smp) return;
+    const hash = geomHash(res.coords);
+    if (force) demCacheDel(hash);
+    const ctl = new AbortController(); ctl._res = res; demAbort = ctl;
+    st.phase = 'loading'; st.done = 0; st.total = smp.pts.length; st.err = null;
+    if (selRoute() === r) demRender(r);
+    try {
+      const f = await demFetchAll(smp, hash, a => { st.done = a; if (demAbort === ctl && selRoute() === r) demRender(r); }, ctl.signal);
+      st.P = demBuild(smp, f.e, 'dem'); st.fromCache = f.fromCache; st.phase = 'ok';
+      if (res.ascend > 50 && st.P.asc > 0) {                 // aprende cuánto difiere el desnivel de BRouter del de EU-DEM
+        const q = st.P.asc / res.ascend;
+        if (q > 0.5 && q < 2) { ascCal = Math.min(1.8, Math.max(0.6, ascCal * 0.5 + q * 0.5)); try { localStorage.setItem(CONFIG.calKey, String(ascCal)); } catch (e) { /* ignorado */ } }
+      }
+      try { renderCards(); } catch (e) { /* tarjetas aún no disponibles */ }
+    } catch (e) {
+      if (e && e.name === 'AbortError') { st.phase = 'idle'; return; }
+      st.phase = 'fallback'; st.err = (e && e.message) || String(e);
+    }
+    if (demAbort === ctl) demAbort = null;
+    if (selRoute() === r) {
+      const asc = renderStats(r);
+      $('sheetTitle').textContent = r.label + ' · ' + res.lengthKm.toFixed(1) + ' km' + (asc !== null ? ' · +' + Math.round(asc) + ' m' : '');
+      demRender(r); drawProfile(r);
+    }
+  }
+
+  function demUpdate(r) {                               // se llama al mostrar los detalles de la ruta seleccionada
+    const res = r.result;
+    if (res._dem && res._dem.phase === 'loading' && demAbort && demAbort._res === res) { demRender(r); return; }
+    demCancel();
+    if (!res._dem) {
+      res._dem = { phase: 'idle', P: null, P0: null };
+      try { const smp = demSamples(res); if (smp && smp.eb) res._dem.P0 = demBuild(smp, smp.eb, 'brouter'); } catch (e) { /* sin altitud de BRouter */ }
+    }
+    if (res._dem.phase === 'loading') res._dem.phase = 'idle';
+    demRender(r);
+    if (res._dem.phase === 'idle' && $('demAuto').checked) demTimer = setTimeout(() => { if (selRoute() === r) demRun(r, false); }, 600);
+  }
+
+  $('btnDem').addEventListener('click', () => {
+    const r = selRoute();
+    if (!r || !r.result._dem) return;
+    demRun(r, r.result._dem.phase === 'ok');
+  });
+  $('slopeThr').addEventListener('input', () => {
+    const r = selRoute();
+    if (r && r.result._dem && (r.result._dem.P || r.result._dem.P0)) { demRender(r); drawProfile(r); }
+    save();
+  });
+  $('demAuto').addEventListener('change', () => {
+    save();
+    const r = selRoute();
+    if (r && $('demAuto').checked && r.result._dem && r.result._dem.phase === 'idle') demUpdate(r);
+  });
+  $('steepList').addEventListener('click', ev => {
+    const row = ev.target.closest('.steepRow');
+    if (!row || !steepP) return;
+    const ru = steepRunsShown[+row.dataset.k];
+    if (!ru) return;
+    const ll = []; for (let i = ru.a; i <= ru.b; i++) ll.push([steepP.pos[i].lat, steepP.pos[i].lng]);
+    if (isMobile()) setSheet(false);
+    map.fitBounds(L.latLngBounds(ll), { maxZoom: 17, padding: [50, 50] });
+  });
+
+
+  // =====================================================================================
+  // FASE 2 · Agua y servicios cerca de la ruta (Overpass API, OpenStreetMap)
+  // =====================================================================================
+  const SVC = {
+    urls: ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter'],   // el segundo solo si el primero falla
+    buffer: 300, gapMs: 6000, cacheKey: 'rutasMtb.svc.v1', cacheMax: 20, typesKey: 'rutasMtb.svcTypes.v1',
+    types: {
+      water:  { ic: '💧', name: 'Agua potable', c: '#1565c0' },
+      spring: { ic: '⛲', name: 'Manantial / fuente', c: '#00838f' },
+      food:   { ic: '☕', name: 'Café, bar, restaurante', c: '#6d4c41' },
+      bike:   { ic: '🚲', name: 'Tienda de bicis', c: '#2e7d32' },
+      repair: { ic: '🔧', name: 'Punto de reparación', c: '#ef6c00' }
+    }
+  };
+  const FOOD = { cafe: 'Cafetería', bar: 'Bar', restaurant: 'Restaurante' };
+  const svcLayers = {}; Object.keys(SVC.types).forEach(k => { svcLayers[k] = L.layerGroup(); });
+  let svcOn = { water: true, spring: true, food: true, bike: true, repair: true };
+  try { const t = JSON.parse(localStorage.getItem(SVC.typesKey) || 'null'); if (t) Object.keys(svcOn).forEach(k => { if (typeof t[k] === 'boolean') svcOn[k] = t[k]; }); } catch (e) { /* sin almacenamiento */ }
+  let svcAbort = null, svcLast = 0, svcCur = null;
+  map.attributionControl.addAttribution('Servicios © colaboradores de OpenStreetMap (Overpass)');
+
+  const svcClass = t => {
+    if (!t) return null;
+    if (t.amenity === 'drinking_water') return 'water';
+    if (t.natural === 'spring') return 'spring';
+    if (FOOD[t.amenity]) return 'food';
+    if (t.shop === 'bicycle') return 'bike';
+    if (t.amenity === 'bicycle_repair_station') return 'repair';
+    return null;
+  };
+  const escH = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  function svcCacheRead() { try { return JSON.parse(localStorage.getItem(SVC.cacheKey) || '{}') || {}; } catch (e) { return {}; } }
+  function svcCacheGet(h) { const c = svcCacheRead(); return c[h] && Array.isArray(c[h].i) ? c[h] : null; }
+  function svcCachePut(h, items) {
+    const c = svcCacheRead(); c[h] = { t: Date.now(), i: items };
+    const ks = Object.keys(c).sort((a, b) => c[a].t - c[b].t);
+    while (ks.length > SVC.cacheMax) delete c[ks.shift()];
+    try { localStorage.setItem(SVC.cacheKey, JSON.stringify(c)); }
+    catch (e1) { try { localStorage.setItem(SVC.cacheKey, JSON.stringify({ [h]: c[h] })); } catch (e2) { /* sin espacio */ } }
+  }
+  function svcCacheDel(h) { const c = svcCacheRead(); if (c[h]) { delete c[h]; try { localStorage.setItem(SVC.cacheKey, JSON.stringify(c)); } catch (e) { /* ignorado */ } } }
+
+  function svcQuery(res) {                              // una sola consulta por ruta: polilínea simplificada + radio de 300 m
+    const c = res.coords, n = c.length;
+    const cd = [0]; for (let i = 1; i < n; i++) cd.push(cd[i - 1] + haversineKm({ lat: c[i - 1][1], lng: c[i - 1][0] }, { lat: c[i][1], lng: c[i][0] }));
+    const gap = Math.max(0.25, cd[n - 1] / 400), pts = [];
+    let nx = 0;
+    for (let i = 0; i < n; i++) if (i === 0 || i === n - 1 || cd[i] >= nx) { pts.push(c[i][1].toFixed(5) + ',' + c[i][0].toFixed(5)); nx = cd[i] + gap; }
+    return '[out:json][timeout:30];nwr(around:' + SVC.buffer + ',' + pts.join(',') + ')' +
+      '[~"^(amenity|natural|shop)$"~"^(drinking_water|spring|cafe|bar|restaurant|bicycle|bicycle_repair_station)$"];out center tags qt;';
+  }
+
+  async function svcFetch(res, signal) {
+    const body = 'data=' + encodeURIComponent(svcQuery(res));
+    let lastErr = null;
+    for (let u = 0; u < SVC.urls.length; u++) {
+      const wait = svcLast + SVC.gapMs - Date.now();
+      if (wait > 0) await sleepAb(wait, signal);
+      svcLast = Date.now();
+      let resp;
+      try { resp = await fetch(SVC.urls[u], { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal }); }
+      catch (e) { if (e.name === 'AbortError') throw e; lastErr = new DemError('sin conexión con el servicio de OpenStreetMap', 'net'); continue; }
+      if (resp.status === 429) { lastErr = new DemError('servidor ocupado o límite de consultas (espera un minuto)', 'quota'); continue; }
+      if (resp.status === 504 || resp.status >= 500) { lastErr = new DemError('el servidor respondió ' + resp.status + ' (sobrecargado)', 'server'); continue; }
+      if (!resp.ok) { lastErr = new DemError('el servidor respondió ' + resp.status, 'bad'); continue; }
+      let j; try { j = await resp.json(); } catch (e) { lastErr = new DemError('respuesta no válida', 'bad'); continue; }
+      if (!Array.isArray(j.elements) || (j.remark && /error|timed out|too many/i.test(j.remark) && !j.elements.length)) { lastErr = new DemError('la consulta no se completó' + (j.remark ? ' (' + String(j.remark).slice(0, 80) + ')' : ''), 'server'); continue; }
+      return j.elements;
+    }
+    throw lastErr || new DemError('error desconocido', 'bad');
+  }
+
+  function svcItems(res, els) {                         // clasifica, quita duplicados y calcula km sobre la ruta y desvío
+    const c = res.coords, n = c.length, cd = [0];
+    for (let i = 1; i < n; i++) cd.push(cd[i - 1] + haversineKm({ lat: c[i - 1][1], lng: c[i - 1][0] }, { lat: c[i][1], lng: c[i][0] }));
+    const seen = new Set(), out = [];
+    for (const e of els) {
+      const k = svcClass(e.tags); if (!k) continue;
+      const lat = e.lat !== undefined ? e.lat : (e.center && e.center.lat), lon = e.lon !== undefined ? e.lon : (e.center && e.center.lon);
+      if (typeof lat !== 'number' || typeof lon !== 'number') continue;
+      const id = e.type + e.id; if (seen.has(id)) continue; seen.add(id);
+      let best = 1e9, bi = 0;
+      for (let i = 0; i < n; i++) { const dl = (c[i][1] - lat) * 111.32, dn = (c[i][0] - lon) * 111.32 * Math.cos(lat * Math.PI / 180), q = dl * dl + dn * dn; if (q < best) { best = q; bi = i; } }
+      const t = e.tags || {};
+      out.push({ k, lat, lon, km: cd[bi], off: Math.round(Math.sqrt(best) * 1000), nm: t.name || '', sub: k === 'food' ? FOOD[t.amenity] : '', oh: t.opening_hours || '' });
+    }
+    return out.sort((a, b) => a.km - b.km);
+  }
+
+  function svcDraw(items) {
+    Object.keys(svcLayers).forEach(k => { svcLayers[k].clearLayers(); });
+    items.forEach(it => {
+      const T = SVC.types[it.k];
+      const ic = L.divIcon({ className: '', html: '<div class="svcIc" style="border-color:' + T.c + '">' + T.ic + '</div>', iconSize: [26, 26], iconAnchor: [13, 13] });
+      L.marker([it.lat, it.lon], { icon: ic, keyboard: false }).bindPopup(
+        '<b>' + escH(it.nm || it.sub || T.name) + '</b>' + (it.nm ? '<br>' + escH(it.sub || T.name) : '') + '<br>km ' + it.km.toFixed(1) + ' de la ruta · a ' + it.off + ' m' + (it.oh ? '<br>Horario: ' + escH(it.oh) : '')
+      ).addTo(svcLayers[it.k]);
+    });
+    svcApply();
+  }
+  function svcApply() { Object.keys(svcLayers).forEach(k => { if (svcOn[k] && svcCur && svcCur.items) { if (!map.hasLayer(svcLayers[k])) svcLayers[k].addTo(map); } else if (map.hasLayer(svcLayers[k])) map.removeLayer(svcLayers[k]); }); }
+
+  function svcRender() {                                // actualiza el cuadro del mapa
+    const box = $('svcBox'); if (!box) return;
+    const st = svcCur, counts = {}; Object.keys(SVC.types).forEach(k => { counts[k] = 0; });
+    if (st && st.items) st.items.forEach(i => { counts[i.k]++; });
+    let txt = 'Elige una ruta para buscar servicios.', err = false;
+    if (st) {
+      if (st.phase === 'loading') txt = 'Buscando servicios en OpenStreetMap…';
+      else if (st.phase === 'ok') txt = st.items.length + ' puntos a ≤ ' + SVC.buffer + ' m de la ruta' + (st.fromCache ? ' · desde la caché' : '') + '.';
+      else if (st.phase === 'err') { txt = 'No se pudo consultar: ' + st.err + '.'; err = true; }
+      else txt = 'Aún sin buscar en esta ruta.';
+    }
+    const sx = $('svcSt'); sx.textContent = txt; sx.className = 'svcSt' + (err ? ' err' : '');
+    const b = $('svcGo'); b.disabled = !st || st.phase === 'loading';
+    b.textContent = !st || st.phase === 'idle' ? 'Buscar agua y servicios' : (st.phase === 'loading' ? 'Buscando…' : (st.phase === 'err' ? 'Reintentar' : 'Volver a buscar'));
+    Object.keys(SVC.types).forEach(k => { $('svcN_' + k).textContent = st && st.items ? counts[k] : '–'; });
+  }
+
+  async function svcRun(r, force) {
+    const res = r.result, st = res._svc, hash = geomHash(res.coords);
+    if (force) svcCacheDel(hash);
+    const ca = svcCacheGet(hash);
+    if (ca) { st.items = ca.i; st.fromCache = true; st.phase = 'ok'; if (svcCur === st) { svcDraw(st.items); svcRender(); } return; }
+    if (svcAbort) svcAbort.abort();
+    const ctl = new AbortController(); svcAbort = ctl;
+    st.phase = 'loading'; svcRender();
+    try {
+      const els = await svcFetch(res, ctl.signal);
+      st.items = svcItems(res, els); st.fromCache = false; st.phase = 'ok';
+      svcCachePut(hash, st.items);
+    } catch (e) {
+      if (e && e.name === 'AbortError') { st.phase = 'idle'; if (svcCur === st) svcRender(); return; }
+      st.phase = 'err'; st.err = (e && e.message) || String(e);
+    }
+    if (svcAbort === ctl) svcAbort = null;
+    if (svcCur === st) { if (st.items) svcDraw(st.items); svcRender(); }
+  }
+
+  function svcUpdate(r) {                               // al mostrar los detalles de una ruta
+    if (svcCur && r.result._svc === svcCur && svcCur.phase === 'loading') { svcRender(); return; }   // misma ruta buscando: no se corta
+    if (svcAbort) { svcAbort.abort(); svcAbort = null; }
+    const res = r.result;
+    if (!res._svc) res._svc = { phase: 'idle', items: null };
+    const st = res._svc; svcCur = st;
+    if (st.phase === 'loading') st.phase = 'idle';
+    if (st.phase === 'idle') { const ca = svcCacheGet(geomHash(res.coords)); if (ca) { st.items = ca.i; st.fromCache = true; st.phase = 'ok'; } }
+    if (st.items) svcDraw(st.items); else { Object.keys(svcLayers).forEach(k => svcLayers[k].clearLayers()); svcApply(); }
+    svcRender();
+  }
+  function svcClear() {
+    if (svcAbort) { svcAbort.abort(); svcAbort = null; }
+    svcCur = null; Object.keys(svcLayers).forEach(k => { svcLayers[k].clearLayers(); }); svcApply(); svcRender();
+  }
+
+  (function () {                                        // control del mapa 💧 (también en horizontal, donde no hay panel)
+    const sz = L.Browser.mobile ? 34 : 28;
+    const SvcCtl = L.Control.extend({
+      options: { position: 'topright' },
+      onAdd() {
+        const div = L.DomUtil.create('div', 'leaflet-bar leaflet-control'), a = L.DomUtil.create('a', '', div);
+        a.href = '#'; a.title = 'Agua y servicios'; a.textContent = '💧';
+        a.style.cssText = 'font-size:16px;width:' + sz + 'px;height:' + sz + 'px;line-height:' + sz + 'px;text-align:center';
+        const box = L.DomUtil.create('div', '', div); box.id = 'svcBox'; box.style.display = 'none';
+        box.innerHTML = '<div class="svcSt" id="svcSt"></div><button id="svcGo" type="button" class="sec" disabled>Buscar agua y servicios</button>' +
+          Object.keys(SVC.types).map(k => '<label><input type="checkbox" data-k="' + k + '"' + (svcOn[k] ? ' checked' : '') + '> ' + SVC.types[k].ic + ' ' + SVC.types[k].name + '<span class="n" id="svcN_' + k + '">–</span></label>').join('');
+        L.DomEvent.disableClickPropagation(div); L.DomEvent.disableScrollPropagation(div);
+        L.DomEvent.on(a, 'click', e => { L.DomEvent.preventDefault(e); box.style.display = box.style.display === 'none' ? '' : 'none'; });
+        L.DomEvent.on(box.querySelector('#svcGo'), 'click', () => { const r = selRoute(); if (r && r.result._svc) svcRun(r, r.result._svc.phase === 'ok'); });
+        box.querySelectorAll('input[type=checkbox]').forEach(cb => L.DomEvent.on(cb, 'change', () => {
+          svcOn[cb.dataset.k] = cb.checked; try { localStorage.setItem(SVC.typesKey, JSON.stringify(svcOn)); } catch (e) { /* ignorado */ }
+          svcApply();
+        }));
+        return div;
+      }
+    });
+    new SvcCtl().addTo(map);
+    svcRender();
+  })();
+
+
+  // =====================================================================================
+  // FASE 3 · Previsión del tiempo (Open-Meteo, sin clave)
+  // =====================================================================================
+  const WX = {
+    url: 'https://api.open-meteo.com/v1/forecast', ttlMs: 60 * 60 * 1000, cacheKey: 'rutasMtb.wx.v1', prefKey: 'rutasMtb.wxPrefs.v1', cacheMax: 8,
+    bad:  { rain: 3,   prob: 70, gust: 60, hot: 36, cold: 0 },
+    warn: { rain: 0.5, prob: 40, gust: 40, wind: 30, hot: 32, cold: 3 }
+  };
+  let wxData = null, wxLoc = null, wxAbort = null, wxRoute = null;
+
+  const wxPoint = res => {                              // punto medio de la ruta (por distancia)
+    const c = res.coords, n = c.length, cd = [0];
+    for (let i = 1; i < n; i++) cd.push(cd[i - 1] + haversineKm({ lat: c[i - 1][1], lng: c[i - 1][0] }, { lat: c[i][1], lng: c[i][0] }));
+    let k = 0; while (k < n - 1 && cd[k] < cd[n - 1] / 2) k++;
+    return { lat: c[k][1], lng: c[k][0] };
+  };
+  function wxCacheRead() { try { return JSON.parse(localStorage.getItem(WX.cacheKey) || '{}') || {}; } catch (e) { return {}; } }
+  function wxCachePut(key, data) {
+    const c = wxCacheRead(); c[key] = { t: Date.now(), d: data };
+    const ks = Object.keys(c).sort((a, b) => c[a].t - c[b].t); while (ks.length > WX.cacheMax) delete c[ks.shift()];
+    try { localStorage.setItem(WX.cacheKey, JSON.stringify(c)); } catch (e) { /* sin espacio */ }
+  }
+  const wxKey = p => p.lat.toFixed(2) + ',' + p.lng.toFixed(2);
+
+  async function wxFetch(p, force, signal) {
+    const key = wxKey(p), ca = wxCacheRead()[key];
+    if (!force && ca && Date.now() - ca.t < WX.ttlMs) return { d: ca.d, t: ca.t, fromCache: true };
+    const url = WX.url + '?latitude=' + p.lat.toFixed(4) + '&longitude=' + p.lng.toFixed(4) +
+      '&hourly=temperature_2m,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m' +
+      '&wind_speed_unit=kmh&forecast_days=7&timezone=auto';
+    let resp;
+    try { resp = await fetch(url, { signal }); }
+    catch (e) { if (e.name === 'AbortError') throw e; throw new DemError('sin conexión con Open-Meteo', 'net'); }
+    if (resp.status === 429) throw new DemError('límite de consultas de Open-Meteo alcanzado, inténtalo más tarde', 'quota');
+    let j = null; try { j = await resp.json(); } catch (e) { /* sin JSON */ }
+    if (!resp.ok || !j || !j.hourly || !Array.isArray(j.hourly.time)) throw new DemError('Open-Meteo respondió ' + resp.status + (j && j.reason ? ' · ' + j.reason : ''), 'bad');
+    const h = j.hourly, d = { off: j.utc_offset_seconds || 0, time: h.time, t: h.temperature_2m, p: h.precipitation_probability, r: h.precipitation, w: h.wind_speed_10m, g: h.wind_gusts_10m };
+    wxCachePut(key, d);
+    return { d, t: Date.now(), fromCache: false };
+  }
+
+  const wxSpeed = () => { const v = parseFloat($('wxSpeed').value); return v >= 4 && v <= 40 ? v : 12; };
+  const wxNum = (a, i) => (a && typeof a[i] === 'number' && isFinite(a[i])) ? a[i] : null;
+  const wxMax = a => { const v = a.filter(x => x !== null); return v.length ? Math.max(...v) : null; };
+  const wxMin = a => { const v = a.filter(x => x !== null); return v.length ? Math.min(...v) : null; };
+
+  function wxBuildDays() {
+    const days = [...new Set(wxData.time.map(t => t.slice(0, 10)))];
+    const sel = $('wxDay'), prev = sel.value;
+    sel.innerHTML = days.map(d => '<option value="' + d + '">' + new Date(d + 'T12:00:00Z').toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }) + '</option>').join('');
+    const nowLocal = new Date(Date.now() + wxData.off * 1000).toISOString();
+    sel.value = days.includes(prev) ? prev : (days.includes(nowLocal.slice(0, 10)) ? nowLocal.slice(0, 10) : days[0]);
+    if (!$('wxHour').options.length) $('wxHour').innerHTML = Array.from({ length: 24 }, (_, h) => '<option value="' + h + '">' + String(h).padStart(2, '0') + ':00</option>').join('');
+    if (!wxBuildDays.set) {                              // hora por defecto: la próxima hora en punto (o 09:00 si no es hoy / es muy tarde)
+      const h = parseInt(nowLocal.slice(11, 13), 10) + 1;
+      $('wxHour').value = (sel.value === nowLocal.slice(0, 10) && h >= 6 && h <= 20) ? h : 9; wxBuildDays.set = true;
+    }
+  }
+
+  function wxRender() {
+    const st = $('wxStatus'), res = wxRoute && wxRoute.result;
+    if (!wxData || !res) { $('wxVerdict').innerHTML = ''; $('wxTable').innerHTML = ''; return; }
+    const day = $('wxDay').value, hh = parseInt($('wxHour').value, 10), speed = wxSpeed();
+    const dur = res.lengthKm / speed, nH = Math.max(1, Math.ceil(dur));
+    const i0 = wxData.time.indexOf(day + 'T' + String(hh).padStart(2, '0') + ':00');
+    if (i0 < 0) { $('wxVerdict').innerHTML = '<div class="demw warn">Esa hora no está en la previsión.</div>'; $('wxTable').innerHTML = ''; return; }
+    const idx = []; for (let k = 0; k < nH && i0 + k < wxData.time.length; k++) idx.push(i0 + k);
+    const T = idx.map(i => wxNum(wxData.t, i)), P = idx.map(i => wxNum(wxData.p, i)), R = idx.map(i => wxNum(wxData.r, i)),
+      W = idx.map(i => wxNum(wxData.w, i)), G = idx.map(i => wxNum(wxData.g, i));
+    const tmax = wxMax(T), tmin = wxMin(T), pmax = wxMax(P), wmax = wxMax(W), gmax = wxMax(G), rsum = R.reduce((a, x) => a + (x || 0), 0);
+    const bad = [], warn = [];
+    if (rsum >= WX.bad.rain) bad.push('lluvia acumulada ' + rsum.toFixed(1) + ' mm'); else if (rsum >= WX.warn.rain) warn.push('lluvia ' + rsum.toFixed(1) + ' mm');
+    if (pmax !== null) { if (pmax >= WX.bad.prob) bad.push('probabilidad de lluvia ' + pmax + ' %'); else if (pmax >= WX.warn.prob) warn.push('probabilidad de lluvia ' + pmax + ' %'); }
+    if (gmax !== null) { if (gmax >= WX.bad.gust) bad.push('rachas de ' + Math.round(gmax) + ' km/h'); else if (gmax >= WX.warn.gust) warn.push('rachas de ' + Math.round(gmax) + ' km/h'); }
+    if (wmax !== null && wmax >= WX.warn.wind) warn.push('viento de ' + Math.round(wmax) + ' km/h');
+    if (tmax !== null) { if (tmax >= WX.bad.hot) bad.push(Math.round(tmax) + ' °C de máxima'); else if (tmax >= WX.warn.hot) warn.push(Math.round(tmax) + ' °C de máxima'); }
+    if (tmin !== null) { if (tmin <= WX.bad.cold) bad.push(Math.round(tmin) + ' °C de mínima'); else if (tmin <= WX.warn.cold) warn.push(Math.round(tmin) + ' °C de mínima'); }
+    const lvl = bad.length ? 'bad' : (warn.length ? 'warn' : 'ok');
+    const lab = { bad: '⛔ No recomendable', warn: '⚠ Dudoso', ok: '✓ Apto' }[lvl];
+    const why = (bad.length ? bad : warn).join(' · ');
+    const endH = (hh + dur), eh = Math.floor(endH) % 24, em = Math.round((endH % 1) * 60);
+    const endTxt = String(eh).padStart(2, '0') + ':' + String(em === 60 ? 59 : em).padStart(2, '0');
+    $('wxVerdict').innerHTML = '<div class="demw ' + lvl + '"><b>' + lab + '</b> · ' + String(hh).padStart(2, '0') + ':00 → ~' + endTxt + ' (' + dur.toFixed(1).replace('.', ',') + ' h a ' + speed + ' km/h)' + (why ? '<br>' + why : '<br>Sin lluvia ni viento relevantes en la franja.') + '</div>';
+    $('wxTable').innerHTML = '<div class="wxRow h"><span>Hora</span><span>Temp.</span><span>Lluvia</span><span>Viento / racha</span></div>' + idx.map((i, k) =>
+      '<div class="wxRow' + ((R[k] || 0) >= 0.2 || (P[k] || 0) >= 50 ? ' rain' : '') + '"><span>' + wxData.time[i].slice(11, 16) + '</span><span>' + (T[k] === null ? '—' : Math.round(T[k]) + ' °C') + '</span><span>' +
+      (P[k] === null ? '—' : P[k] + ' %') + ' · ' + (R[k] === null ? '—' : R[k].toFixed(1) + ' mm') + '</span><span>' + (W[k] === null ? '—' : Math.round(W[k])) + ' / ' + (G[k] === null ? '—' : Math.round(G[k])) + ' km/h</span></div>').join('');
+    $('wxSum').textContent = 'Previsión del tiempo · ' + lab.replace(/^[^ ]+ /, '');
+  }
+
+  async function wxLoad(r, force) {
+    if (wxAbort) { wxAbort.abort(); wxAbort = null; }
+    const ctl = new AbortController(); wxAbort = ctl; wxRoute = r;
+    const p = wxPoint(r.result), st = $('wxStatus'); wxLoc = p;
+    st.textContent = 'Consultando Open-Meteo…'; st.className = ''; $('btnWx').disabled = true;
+    try {
+      const f = await wxFetch(p, force, ctl.signal);
+      if (wxAbort !== ctl) return;
+      wxData = f.d; wxBuildDays();
+      st.textContent = 'Previsión de Open-Meteo para ' + p.lat.toFixed(3) + ', ' + p.lng.toFixed(3) + ' · ' + (f.fromCache ? 'caché de las ' : 'consultada a las ') + new Date(f.t).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', hour12: false }) + '.';
+      wxRender();
+    } catch (e) {
+      if (e && e.name === 'AbortError') return;
+      wxData = null; st.textContent = 'No se pudo obtener la previsión: ' + ((e && e.message) || e) + '.'; st.className = 'err';
+      $('wxVerdict').innerHTML = ''; $('wxTable').innerHTML = '';
+    }
+    if (wxAbort === ctl) wxAbort = null;
+    $('btnWx').disabled = false;
+  }
+
+  function wxUpdate(r) {                                // al mostrar los detalles: solo consulta si el panel está abierto
+    if (wxRoute === r && (wxData || wxAbort)) { wxRender(); return; }   // misma ruta (reselección o edición): se conservan día y hora
+    wxRoute = r; wxData = null; wxBuildDays.set = false;
+    $('wxVerdict').innerHTML = ''; $('wxTable').innerHTML = ''; $('wxStatus').className = '';
+    $('wxStatus').textContent = 'Abre este panel para consultar la previsión.';
+    $('wxSum').textContent = 'Previsión del tiempo';
+    if ($('wxBox').open) wxLoad(r, false);
+  }
+  function wxCancel() { if (wxAbort) { wxAbort.abort(); wxAbort = null; } wxRoute = null; }
+
+  try { const pf = JSON.parse(localStorage.getItem(WX.prefKey) || 'null'); if (pf && pf.speed >= 4 && pf.speed <= 40) $('wxSpeed').value = pf.speed; } catch (e) { /* sin almacenamiento */ }
+  $('wxBox').addEventListener('toggle', () => { const r = selRoute(); if ($('wxBox').open && r && !wxData && !wxAbort) wxLoad(r, false); });
+  $('btnWx').addEventListener('click', () => { const r = selRoute(); if (r) wxLoad(r, true); });
+  ['wxDay', 'wxHour'].forEach(id => $(id).addEventListener('change', wxRender));
+  $('wxSpeed').addEventListener('input', () => { try { localStorage.setItem(WX.prefKey, JSON.stringify({ speed: wxSpeed() })); } catch (e) { /* ignorado */ } wxRender(); });
+  map.attributionControl.addAttribution('Previsión © <a href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>');
+
   function hideDetails() {
+    demCancel(); svcClear(); wxCancel();
     $('detail').style.display = 'none';
     $('sheetTitle').textContent = 'Rutas MTB';
     if ($('profileBox').style.display !== 'none') {
@@ -1913,14 +2739,7 @@
     const res = r.result, P = getProfile(res);
     $('detail').style.display = '';
 
-    const asc = res.ascend !== null ? res.ascend : (P ? P.asc : null);
-    const stats = [
-      ['Distancia', res.lengthKm.toFixed(1) + ' km'],
-      ['Desnivel +', asc !== null ? Math.round(asc) + ' m' : '—'],
-      ['Desnivel −', P ? Math.round(P.desc) + ' m' : '—'],
-      ['Altitud mín / máx', P ? Math.round(P.min) + ' / ' + Math.round(P.max) + ' m' : '—']
-    ];
-    $('stats').innerHTML = stats.map(s => '<div class="stat"><span>' + s[0] + '</span><b>' + s[1] + '</b></div>').join('');
+    const asc = renderStats(r);
 
     const S = getSurface(res);
     if (S) {
@@ -1936,8 +2755,11 @@
     }
     $('sheetTitle').textContent = r.label + ' · ' + res.lengthKm.toFixed(1) + ' km' + (asc !== null ? ' · +' + Math.round(asc) + ' m' : '');
     $('gpxName').value = r.gpxName || defaultName(r);
-    $('btnFixSpurs').style.display = spurOf(r) ? '' : 'none';
+    if (spurOf(r) && !r.result._spurTried) setTimeout(() => { if (selRoute() === r) autoFixSpurs(r); }, 0);
     updateUndo();
+    demUpdate(r);
+    svcUpdate(r);
+    wxUpdate(r);
     drawProfile(r);
   }
 
@@ -2029,11 +2851,28 @@
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 3000);
   }
-  $('btnGpx').addEventListener('click', () => {
+  // Guardar: ordenador (Chrome/Edge) → ventana «Guardar como» para elegir carpeta; móvil u otros navegadores → descarga directa
+  async function saveGpx(p) {
+    const file = gpxFileName(p.name);
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await window.showSaveFilePicker({ suggestedName: file, id: 'rutas-mtb-gpx', startIn: 'documents', types: [{ description: 'Ruta GPX', accept: { 'application/gpx+xml': ['.gpx'] } }] });
+        const w = await h.createWritable(); await w.write(p.g.xml); await w.close();
+        return { how: 'folder', name: h.name || file };
+      } catch (e) {
+        if (e && e.name === 'AbortError') return null;                  // el usuario cerró la ventana
+      }
+    }
+    downloadGpx(p);
+    return { how: 'download', name: file };
+  }
+  $('btnGpx').addEventListener('click', async () => {
     const p = prepareGpx();
     if (!p) return;
-    downloadGpx(p);
-    setStatus('GPX generado: ' + gpxNote(p.g) + '. Si el visor no descarga el archivo, usa «Copiar GPX» y pégalo en un archivo .gpx, o abre «Rutas MTB.html» en Chrome/Edge.');
+    const res = await saveGpx(p);
+    if (!res) { setStatus('Guardado cancelado.'); return; }
+    setStatus(res.how === 'folder' ? 'GPX guardado: «' + res.name + '» (' + gpxNote(p.g) + ').'
+      : 'GPX descargado: «' + res.name + '» (' + gpxNote(p.g) + '), en la carpeta de descargas del dispositivo. Si no se descarga, usa «Copiar GPX».');
   });
 
   $('btnGpxCopy').addEventListener('click', async () => {
@@ -2064,7 +2903,7 @@
     const text = 'Te paso el recorrido MTB «' + p.name + '»: ' + r.result.lengthKm.toFixed(1) + ' km' + (asc !== null ? ', +' + Math.round(asc) + ' m de desnivel' : '') +
       '. Va adjunto el archivo ' + file + ': en Garmin Connect, Recorridos → Importar (o ábrelo con la app Garmin Connect).';
     if (navigator.share && navigator.canShare) {
-      for (const type of ['application/gpx+xml', 'application/octet-stream']) {
+      for (const type of ['application/gpx+xml', 'application/octet-stream', 'text/xml', 'application/xml', 'text/plain']) {
         const f = new File([p.g.xml], file, { type });
         let can = false;
         try { can = navigator.canShare({ files: [f] }); } catch (e) { can = false; }
@@ -2073,7 +2912,7 @@
         catch (e) { if (e.name === 'AbortError') return; }  // NotAllowedError: el navegador no deja compartir .gpx → plan B
       }
     }
-    downloadGpx(p);
+    downloadGpx(p);                                       // sin hoja de compartir con archivo: se descarga y se ofrece correo / WhatsApp
     showShareBox(p.name, file, text);
   });
 
@@ -2126,9 +2965,9 @@
     map.removeLayer(hoverMarker);
     hoverApi = null;
 
-    const P = getProfile(r.result);
+    const P = demProfileFor(r);
     if (!P) { chart.innerHTML = ''; head.textContent = 'Sin datos de altitud en la respuesta de BRouter.'; return; }
-    const baseHead = 'Perfil de elevación · ' + r.label;
+    const baseHead = 'Perfil de elevación · ' + r.label + (P.source === 'dem' ? ' · EU-DEM' : '');
     head.textContent = baseHead;
 
     const W = Math.max(300, chart.clientWidth), H = Math.max(80, chart.clientHeight);
@@ -2159,7 +2998,7 @@
     chart.innerHTML =
       '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + grid +
       '<polygon points="' + X(0).toFixed(1) + ',' + Y(yLo).toFixed(1) + ' ' + pts + ' ' + X(P.total).toFixed(1) + ',' + Y(yLo).toFixed(1) + '" fill="' + r.color + '" fill-opacity=".22"/>' +
-      '<polyline points="' + pts + '" fill="none" stroke="' + r.color + '" stroke-width="1.6"/>' +
+      '<polyline points="' + pts + '" fill="none" stroke="' + r.color + '" stroke-width="1.6"/>' + steepSvg(P, X, Y) +
       '<line id="hvLine" y1="' + mt + '" y2="' + (mt + ih) + '" stroke="#111" stroke-width="1" style="display:none"/></svg>';
 
     const svg = chart.firstChild, hv = svg.querySelector('#hvLine');
@@ -2172,7 +3011,7 @@
       const dd = (P.d[i1] - P.d[i0]) * 1000;
       const slope = dd > 0 ? (P.e[i1] - P.e[i0]) / dd * 100 : 0;
       head.textContent = P.d[i].toFixed(2) + ' km · ' + Math.round(P.e[i]) + ' m · pendiente ' + (slope >= 0 ? '+' : '') + slope.toFixed(1) + ' %';
-      hoverMarker.setLatLng([r.result.coords[i][1], r.result.coords[i][0]]);
+      hoverMarker.setLatLng(P.pos ? [P.pos[i].lat, P.pos[i].lng] : [r.result.coords[i][1], r.result.coords[i][0]]);
       if (!map.hasLayer(hoverMarker)) hoverMarker.addTo(map);
     };
     const clearAt = () => {
@@ -2180,7 +3019,7 @@
       head.textContent = baseHead;
       map.removeLayer(hoverMarker);
     };
-    hoverApi = { show: showAt, clear: clearAt, r };       // el mapa usa esto para sincronizar el perfil
+    hoverApi = { show: ci => showAt(P.fromCoord ? P.fromCoord(ci) : ci), clear: clearAt, r };       // el mapa usa esto para sincronizar el perfil
     svg.addEventListener('pointermove', ev => {
       const rect = svg.getBoundingClientRect();
       const x = (ev.clientX - rect.left) * (W / rect.width);
@@ -2254,6 +3093,7 @@
 
   // ---------- Créditos del mapa plegados en un icono ⓘ (el crédito sigue disponible al tocarlo) ----------
   map.attributionControl.setPrefix(false);               // quita «Leaflet» y la bandera (es opcional)
+  map.attributionControl.setPosition('topright');        // arriba: abajo lo taparía el panel en móvil (antes de ocultarlo: al mover el control se recrea su contenedor)
   (function () {
     const attr = map.attributionControl.getContainer();
     attr.style.display = 'none';
@@ -2276,7 +3116,6 @@
       }
     });
     new InfoCtl().addTo(map);
-    map.attributionControl.setPosition('topright');      // arriba: abajo lo taparía el panel en móvil
   })();
   updateUndo();
 
@@ -2388,9 +3227,10 @@
         mode: state.mode, start: state.start, end: state.end, passes: state.passes,
         base: baseSel.value,
         view: { c: map.getCenter(), z: map.getZoom() },
-        radius: $('radius').value, bearing: $('bearing').value, sense: $('sense').value,
+        dist: $('dist').value, prio: $('prio').value, bearing: $('bearing').value, sense: $('sense').value,
         level: $('level').value, avoidRoads: $('avoidRoads').value, variety: $('variety').value, search: $('search').value, profile: $('profile').value, extra: $('extra').value, nAlt: $('nAlt').value,
-        ascent: $('ascent').value, ascentMode: $('ascentMode').value
+        ascent: $('ascent').value, ascentMode: $('ascentMode').value,
+        slopeThr: $('slopeThr').value, demAuto: $('demAuto').checked
       }));
     } catch (e) { /* sin almacenamiento: se ignora */ }
   }
@@ -2404,18 +3244,18 @@
     setBase(base);
     if (d) {
       if (d.view && d.view.c) map.setView(d.view.c, d.view.z);
-      if (d.radius) $('radius').value = d.radius;
+      if (d.dist >= 5) $('dist').value = d.dist; else if (d.radius) $('dist').value = Math.round(2 * Math.PI * d.radius * 1.2);
+      if (d.prio === 'dist' || d.prio === 'asc' || d.prio === 'bal') $('prio').value = d.prio;
       if (d.bearing) $('bearing').value = d.bearing;
       if (d.sense) $('sense').value = d.sense;
       if (d.profile) $('profile').value = d.profile;
       if (d.extra) $('extra').value = d.extra;
       if (d.level && ($('level').querySelector('option[value="' + d.level + '"]'))) $('level').value = d.level;
-      if (d.avoidRoads && $('avoidRoads').querySelector('option[value="' + d.avoidRoads + '"]')) $('avoidRoads').value = d.avoidRoads;
       if (d.variety && $('variety').querySelector('option[value="' + d.variety + '"]')) $('variety').value = d.variety;
-      if (d.search && $('search').querySelector('option[value="' + d.search + '"]')) $('search').value = d.search;
       if (d.nAlt) $('nAlt').value = d.nAlt;
       if (d.ascent) $('ascent').value = d.ascent;
-      if (d.ascentMode === 'max' || d.ascentMode === 'approx') $('ascentMode').value = d.ascentMode;
+      if (d.slopeThr >= 3 && d.slopeThr <= 60) $('slopeThr').value = d.slopeThr;
+      if (d.demAuto === false) $('demAuto').checked = false;
       if (d.mode === 'ab' || d.mode === 'circular') { state.mode = d.mode; $('mode').value = d.mode; }
       if (d.start) setStart(d.start, { silent: true });
       if (d.end) setEnd(d.end, { silent: true });
