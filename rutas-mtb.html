@@ -359,7 +359,7 @@
   }
 
   // ---------- Configuración ----------
-  const APP_VERSION = '2026-11-13 · v8';
+  const APP_VERSION = '2026-11-13 · v9';
   const CONFIG = {
     center: [36.7213, -4.4214],            // Málaga
     zoom: 11,
@@ -371,7 +371,7 @@
     delayMs: 700,                          // pausa entre peticiones (siempre de una en una: la instancia pública corta las simultáneas)
     ascentTol: 0.15,                       // tolerancia del criterio «aproximado»
     distTol: 0.10, distTolBal: 0.15, distTolAsc: 0.30,   // tolerancia de la distancia (manda distancia / equilibrado / manda desnivel)
-    fitIter: 4, fitIterAsc: 4, factorKey: 'rutasMtb.distFactor.v1',   // intentos de ajuste (sin / con desnivel)
+    fitIter: 3, fitIterAsc: 3, budgetMs: 90000, budgetReq: 30, factorKey: 'rutasMtb.distFactor.v1',   // intentos de ajuste (sin / con desnivel)
     scoutBearings: [0, 60, 120, 180, 240, 300],   // con desnivel: rumbos que se exploran antes de ajustar
     calKey: 'rutasMtb.ascCal.v1',          // relación desnivel EU-DEM ÷ desnivel BRouter (se aprende)
     ascentMaxFactor: 0.9,                  // en modo «máximo» se apunta al 90 % del límite
@@ -834,7 +834,8 @@
 
   // ---------- BRouter ----------
   // Servidor saturado: «403 Please, retry later!», «400 operation killed by thread-priority-watchdog», 429, 502-504
-  const isBusy = (status, text) => /retry later|thread-priority-watchdog|operation killed|too many/i.test(text || '') || [429, 502, 503, 504].includes(status);
+  const isBusy = (status, text) => /retry later|thread-priority-watchdog|operation killed|too many/i.test(text || '') || [429, 502, 503, 504].includes(status) ||
+    (status === 500 && (text || '').trim().length < 5);   // 500 sin mensaje = servidor caído por saturación, no un error de la ruta
 
   // ---------- OpenRouteService (motor alternativo, con clave gratuita) ----------
   // Se usa como si fuera un perfil más de BRouter: perfil «ors:cycling-mountain» y extra «steep=N».
@@ -923,6 +924,7 @@
       text = await resp.text();
       if (!resp.ok && isBusy(resp.status, text) && att < 3) {
         const w = [3, 6, 10][att];
+        CONFIG.delayMs = Math.min(2500, CONFIG.delayMs + 600);     // servidor saturado: más pausa entre peticiones el resto de la sesión
         setStatus('BRouter está ocupado («' + text.trim().slice(0, 60) + '»). Reintentando en ' + w + ' s…');
         await sleep(w * 1000);
         continue;
@@ -1149,6 +1151,7 @@
     } catch (e) {
       if (/^No se pudo contactar/.test(e.message) || e.transient) throw e;   // red o servidor ocupado: no se marca el perfil como malo
       if (e.ferry) { profCheck.ok.add(key); return true; }                  // el tramo de prueba cayó en el mar: el perfil sí funciona
+      if (/respondió 5\d\d/.test(e.message)) return true;                  // error del servidor: no dice nada de los parámetros (se usan)
       profCheck.bad.add(key); profCheck.why[key] = e.message;
       return false;
     }
@@ -1391,6 +1394,7 @@
     let radius = v.params.radius, best = null;
     const iters = c ? CONFIG.fitIterAsc : CONFIG.fitIter, hist = [];
     for (let it = 0; it < iters; it++) {
+      if (it > 0 && best && overBudget()) break;            // límite de tiempo/peticiones: se queda con lo mejor hasta ahora
       const p = Object.assign({}, v.params, { radius, fitted: true, dTol });
       let r, pts;
       if (it === 0 && v.seed) { r = v.seed.r; pts = v.seed.points.map(copyPt); }   // ruta ya calculada al explorar direcciones
@@ -1450,11 +1454,13 @@
 
   // Con desnivel: antes de ajustar se prueban varios rumbos (sierra, costa, valle…) y se eligen los de pendiente media
   // (m/km) más parecida a la pedida; solo con el radio no se puede cumplir a la vez distancia y desnivel.
-  let lastScout = null;
+  let lastScout = null, calcBudget = null;
+  const overBudget = () => !!calcBudget && (Date.now() > calcBudget.end || stats.req - calcBudget.req0 >= CONFIG.budgetReq) && (calcBudget.hit = true);
   async function scoutCircular(profile, extra, c, myRun) {
     const p0 = circularParams(), D = p0.dist, A = c.value, out = [], B = CONFIG.scoutBearings;
     let retried = false;
     for (let k = 0; k < B.length; k++) {
+      if (k >= 3 && out.length && overBudget()) break;
       const b = B[k] + rnd(-15, 15);
       const w = circularWaypoints(state.start, p0, b);
       const pts = [state.start, ...w.aux, state.start].map(copyPt);
@@ -1525,6 +1531,7 @@
 
     const myRun = ++runId;                                // cancela un cálculo anterior en curso; las rutas ya calculadas se conservan
     const t0 = Date.now(), req0 = stats.req;
+    calcBudget = { end: t0 + CONFIG.budgetMs, req0, hit: false };
     const took = () => (stats.req - req0) + ' peticiones a ' + ($('engine').value === 'ors' ? 'OpenRouteService' : 'BRouter') + ' en ' + Math.round((Date.now() - t0) / 1000) + ' s';
     const batch = ++state.batch, firstNew = state.routes.length;
     const btn = $('btnRoute');
@@ -1569,6 +1576,7 @@
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
       if (searching && cands.filter(c => c.score < 12).length >= nWanted) break;   // ya hay suficientes con poco tráfico
+      if (circFit && cands.length && overBudget()) break;  // límite de tiempo/peticiones: se muestran las mejores halladas
       if (circFit) {                                      // circular: se calculan las pedidas + 1 de reserva; más solo si aún faltan rutas
         const usable = cands.filter(c => !c.spur).length;
         if (usable >= nWanted + 1 || (i >= nWanted + 1 && usable >= nWanted)) break;
@@ -1663,6 +1671,7 @@
     if (setup.fellBack) notes.push('No se pudo usar el perfil «' + setup.wanted + '»' + (setup.reason ? ' (' + setup.reason + ')' : '') + '. Se ha usado «' + setup.profile + '».');
     if (setup.roadOff) notes.push('BRouter no aceptó los ajustes de «Evitar carreteras» con el perfil «' + (/^custom/.test(setup.profile) ? 'MTB' : setup.profile) + '»; se ha calculado sin ellos.' + (setup.roadWhy ? ' Motivo: ' + setup.roadWhy.slice(0, 220) : ''));
     if (spursTotal) notes.push('Se han descartado ' + spursTotal + ' punto(s) auxiliar(es) que obligaban a ir y volver por el mismo camino (ramales sin salida).');
+    if (calcBudget && calcBudget.hit) notes.push('Se ha parado al llegar al límite de ' + Math.round(CONFIG.budgetMs / 1000) + ' s o ' + CONFIG.budgetReq + ' peticiones (BRouter va lento): se muestran las mejores rutas halladas. Si quieres más, pulsa «Calcular otra ruta».');
     if (dropped) notes.push(dropped + ' variante(s) descartada(s) por ir y volver por el mismo camino.');
     if (skipped) notes.push(skipped + ' variante(s) idéntica(s) a otra omitida(s).');
     if (failed.length) notes.push('No disponibles:\n' + failed.map(f => f.v.label + ': ' + f.e.message).join('\n'));
