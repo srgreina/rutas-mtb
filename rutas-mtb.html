@@ -227,6 +227,18 @@
       </select>
       <div class="hint" id="levelHint"></div>
     </div>
+    <div class="field">
+      <label for="engine">Motor de cálculo</label>
+      <select id="engine">
+        <option value="brouter" selected>BRouter (sin clave)</option>
+        <option value="ors">OpenRouteService (clave gratuita)</option>
+      </select>
+    </div>
+    <div class="field" id="orsBox" style="display:none">
+      <label for="orsKey">Clave de OpenRouteService</label>
+      <input type="password" id="orsKey" autocomplete="off" spellcheck="false" placeholder="pega aquí tu clave">
+      <div class="hint">Gratis: regístrate en <a href="https://openrouteservice.org/dev/#/signup" target="_blank" rel="noopener">openrouteservice.org</a> y copia la clave de «Dashboard → Tokens». Límite: 2.000 cálculos al día y 40 por minuto (un cálculo con desnivel usa 10-25). Perfil «bici de montaña». La clave se guarda solo en este dispositivo.</div>
+    </div>
     <select id="avoidRoads" hidden><option value="max" selected>Máximo · prioridad a pistas, carriles y senderos</option></select>
     <div id="customOpts" style="display:none">
       <div class="field">
@@ -347,7 +359,7 @@
   }
 
   // ---------- Configuración ----------
-  const APP_VERSION = '2026-11-13 · v7';
+  const APP_VERSION = '2026-11-13 · v8';
   const CONFIG = {
     center: [36.7213, -4.4214],            // Málaga
     zoom: 11,
@@ -823,9 +835,77 @@
   // ---------- BRouter ----------
   // Servidor saturado: «403 Please, retry later!», «400 operation killed by thread-priority-watchdog», 429, 502-504
   const isBusy = (status, text) => /retry later|thread-priority-watchdog|operation killed|too many/i.test(text || '') || [429, 502, 503, 504].includes(status);
-  const stats = { req: 0 };                              // peticiones a BRouter (se muestran al terminar el cálculo)
+
+  // ---------- OpenRouteService (motor alternativo, con clave gratuita) ----------
+  // Se usa como si fuera un perfil más de BRouter: perfil «ors:cycling-mountain» y extra «steep=N».
+  // El resultado se convierte al mismo formato (incluida una tabla de tramos con highway/surface para firme y tráfico).
+  const ORS = { url: 'https://api.openrouteservice.org/v2/directions/', keyKey: 'rutasMtb.orsKey.v1', gapMs: 1600 };
+  let orsLast = 0;
+  const ORS_WAY = { 1: 'primary', 2: 'tertiary', 3: 'residential', 4: 'path', 5: 'track', 6: 'cycleway', 7: 'footway', 8: 'steps', 9: 'ferry', 10: 'construction' };
+  const ORS_SURF = { 1: 'paved', 2: 'unpaved', 3: 'asphalt', 4: 'concrete', 5: 'sett', 6: 'metal', 7: 'wood', 8: 'compacted', 9: 'fine_gravel', 10: 'gravel', 11: 'dirt', 12: 'ground', 13: 'ice', 14: 'paving_stones', 15: 'sand', 16: 'woodchips', 17: 'grass', 18: 'grass_paver' };
+  const orsKey = () => { try { return (localStorage.getItem(ORS.keyKey) || '').trim(); } catch (e) { return ($('orsKey').value || '').trim(); } };
+
+  async function fetchORS(points, profile, altIdx, extra) {
+    const key = orsKey();
+    const fail = (msg, transient, fatal) => { const er = new Error(msg); er.url = 'https://openrouteservice.org'; er.transient = !!transient; er.fatal = !!fatal; throw er; };
+    if (!key) fail('Falta la clave de OpenRouteService: pégala en «Motor de cálculo» o vuelve a BRouter.', false, true);
+    const steep = parseInt((/steep=(\d)/.exec(extra || '') || [])[1] || '2', 10);
+    const body = {
+      coordinates: points.map(p => [+p.lng.toFixed(6), +p.lat.toFixed(6)]),
+      elevation: true, instructions: false, extra_info: ['waytype', 'surface'],
+      options: { avoid_features: ['ferries'], profile_params: { weightings: { steepness_difficulty: steep } } }
+    };
+    if (altIdx > 0 && points.length === 2) body.alternative_routes = { target_count: Math.min(3, altIdx + 1), share_factor: 0.6, weight_factor: 1.6 };
+    let resp, text;
+    for (let att = 0; att < 4; att++) {
+      const wait = orsLast + ORS.gapMs - Date.now();
+      if (wait > 0) await sleep(wait);
+      orsLast = Date.now();
+      try {
+        resp = await fetch(ORS.url + profile + '/geojson', { method: 'POST', headers: { 'Authorization': key, 'Content-Type': 'application/json', 'Accept': 'application/geo+json, application/json' }, body: JSON.stringify(body) });
+      } catch (e) { fail('No se pudo contactar con OpenRouteService (red o CORS). Detalle: ' + e.message); }
+      text = await resp.text();
+      if ((resp.status === 429 || resp.status >= 502) && att < 3) {
+        const w = [5, 15, 30][att];
+        setStatus('OpenRouteService limita las peticiones (' + resp.status + '). Reintentando en ' + w + ' s…');
+        await sleep(w * 1000);
+        continue;
+      }
+      break;
+    }
+    let j = null; try { j = JSON.parse(text); } catch (e) { /* no era JSON */ }
+    if (!resp.ok) {
+      const em = (j && j.error && (j.error.message || j.error)) || text.trim().slice(0, 200);
+      if (resp.status === 401 || resp.status === 403) fail('OpenRouteService rechazó la clave (' + resp.status + '). Revisa que esté bien copiada o vuelve a BRouter.', false, true);
+      if (resp.status === 429) fail('Cuota de OpenRouteService agotada o demasiadas peticiones por minuto (' + em + ').', true);
+      fail('OpenRouteService respondió ' + resp.status + ': ' + em, resp.status >= 500);
+    }
+    const feats = (j && j.features) || [];
+    const feat = feats[Math.min(altIdx || 0, feats.length - 1)];
+    if (altIdx > 0 && feats.length <= altIdx) fail('OpenRouteService no tiene una alternativa ' + (altIdx + 1) + ' para este tramo.');
+    if (!feat || !feat.geometry || !feat.geometry.coordinates || feat.geometry.coordinates.length < 2) fail('OpenRouteService no devolvió ninguna traza.');
+    const coords = feat.geometry.coordinates, pr = feat.properties || {}, n = coords.length;
+    // tabla de tramos al estilo BRouter (Distance + WayTags) para firme y tráfico
+    const per = (ex, map) => { const a = new Array(n).fill(0); ((ex && ex.values) || []).forEach(v => { for (let i = v[0]; i < v[1] && i < n; i++) a[i] = v[2]; }); return a; };
+    const wt = per(pr.extras && pr.extras.waytype), sf = per(pr.extras && pr.extras.surface);
+    const messages = [['Longitude', 'Latitude', 'Elevation', 'Distance', 'WayTags']];
+    let acc = 0, cur = null, len = 0;
+    for (let i = 0; i < n - 1; i++) {
+      const d = haversineKm({ lat: coords[i][1], lng: coords[i][0] }, { lat: coords[i + 1][1], lng: coords[i + 1][0] }) * 1000;
+      len += d;
+      const tags = (ORS_WAY[wt[i]] ? (wt[i] === 9 ? 'route=ferry' : 'highway=' + ORS_WAY[wt[i]]) : 'highway=road') + (ORS_SURF[sf[i]] ? ' surface=' + ORS_SURF[sf[i]] : '');
+      if (cur !== null && tags !== cur) { messages.push(['', '', '', String(Math.round(acc)), cur]); acc = 0; }
+      cur = tags; acc += d;
+    }
+    if (cur !== null) messages.push(['', '', '', String(Math.round(acc)), cur]);
+    const dist = pr.summary && pr.summary.distance;
+    return { coords, lengthKm: (isFinite(dist) ? dist : len) / 1000, ascend: isFinite(pr.ascent) ? pr.ascent : null, messages };
+  }
+
+  const stats = { req: 0 };                              // peticiones al motor (se muestran al terminar el cálculo)
   async function fetchBRouter(points, profile, altIdx, extra) {
     stats.req++;
+    if (/^ors:/.test(profile)) return fetchORS(points, profile.slice(4), altIdx, extra);
     const lonlats = points.map(p => p.lng.toFixed(6) + ',' + p.lat.toFixed(6)).join('|');
     let url = CONFIG.brouterUrl + '?lonlats=' + encodeURIComponent(lonlats) +
       '&profile=' + encodeURIComponent(profile) +
@@ -1055,7 +1135,7 @@
   }
 
   // Comprobación de perfiles: una ruta corta (1,5 km) por candidato; el resultado se recuerda durante la sesión
-  const profCheck = { ok: new Set(), bad: new Set() };
+  const profCheck = { ok: new Set(), bad: new Set(), why: {} };
 
   async function probeProfile(pf, extra) {
     const key = pf + '|' + (extra || '');
@@ -1069,7 +1149,7 @@
     } catch (e) {
       if (/^No se pudo contactar/.test(e.message) || e.transient) throw e;   // red o servidor ocupado: no se marca el perfil como malo
       if (e.ferry) { profCheck.ok.add(key); return true; }                  // el tramo de prueba cayó en el mar: el perfil sí funciona
-      profCheck.bad.add(key);
+      profCheck.bad.add(key); profCheck.why[key] = e.message;
       return false;
     }
   }
@@ -1116,13 +1196,17 @@
   async function pickExtra(pf, base) {
     const tiers = roadExtra(pf);
     for (const road of tiers) if (await probeProfile(pf, joinExtra(base, road))) return { extra: joinExtra(base, road), roadOff: false };
-    if (await probeProfile(pf, base)) return { extra: base, roadOff: tiers.length > 0 };
+    if (await probeProfile(pf, base)) return { extra: base, roadOff: tiers.length > 0, roadWhy: tiers.length ? (profCheck.why[pf + '|' + joinExtra(base, tiers[tiers.length - 1])] || '') : '' };
     return null;
   }
 
   // Devuelve {profile, extra, wanted, fellBack, reason} o null si ningún candidato responde
   async function resolveSetup() {
     const lv = $('level').value;
+    if ($('engine').value === 'ors') {
+      if (!orsKey()) { const er = new Error('Falta la clave de OpenRouteService: pégala en «Motor de cálculo» o vuelve a BRouter.'); throw er; }
+      return { profile: 'ors:cycling-mountain', extra: 'steep=' + ({ facil: 0, media: 1, dificil: 2, enduro: 3 }[lv] ?? 2), wanted: 'ORS', fellBack: false };
+    }
     if (lv === 'custom') { const pf = $('profile').value.trim() || 'trekking'; return { profile: pf, extra: customExtra(), wanted: pf, fellBack: false }; }
     const L1 = LEVELS[lv] || LEVELS.dificil;
     let reason = null;
@@ -1133,7 +1217,7 @@
         try {
           const id = await ensureMtbProfile();
           const ex = await pickExtra(id, L1.extra);
-          if (ex !== null) return { profile: id, extra: ex.extra, wanted: 'MTB', fellBack: false, roadOff: ex.roadOff };
+          if (ex !== null) return { profile: id, extra: ex.extra, wanted: 'MTB', fellBack: false, roadOff: ex.roadOff, roadWhy: ex.roadWhy };
           mtbProfile.error = 'el perfil MTB subido no responde';
           reason = mtbProfile.error;
         } catch (e) {
@@ -1153,7 +1237,7 @@
       const known = profCheck.ok.has(pf + '|') || profCheck.bad.has(pf + '|');
       const ex = await pickExtra(pf, L1.mtb ? '' : L1.extra);
       if (ex !== null) {
-        return { profile: pf, extra: ex.extra, wanted: L1.mtb ? 'MTB' : cands[0], fellBack: !!L1.mtb || i > 0, reason, roadOff: ex.roadOff };
+        return { profile: pf, extra: ex.extra, wanted: L1.mtb ? 'MTB' : cands[0], fellBack: !!L1.mtb || i > 0, reason, roadOff: ex.roadOff, roadWhy: ex.roadWhy };
       }
       if (!known) await sleep(CONFIG.delayMs);
     }
@@ -1258,16 +1342,26 @@
   }
 
   // Quita los puntos auxiliares que provocan ramales. Se eliminan todos los detectados a la vez (una sola petición más)
+  // Idas y vueltas: 1.º se acercan al centro del circuito los puntos que las provocan (conserva forma y distancia);
+  // si siguen, se quitan. Los lugares de «Pasar por» no se tocan nunca.
   async function cleanSpurs(r, pts, profile, alt, extra, minPts) {
-    let cur = pts, removed = 0;
-    for (let t = 0; t < 2 && cur.length > (minPts || 3); t++) {
-      const drop = new Set();
-      findSpur(r.coords, 120, cur, true).forEach(sp => { if (sp.wp > 0) drop.add(sp.wp); });   // punto de paso que provoca cada ramal
-      if (!drop.size || cur.length - drop.size < (minPts || 3)) break;
-      const nxt = cur.filter((_, i) => !drop.has(i));
+    let cur = pts, removed = 0, moved = false;
+    for (let t = 0; t < 3 && cur.length > (minPts || 3); t++) {
+      const bad = new Set();
+      findSpur(r.coords, 120, cur, true).forEach(sp => { if (sp.wp > 0 && sp.wp < cur.length - 1 && !cur[sp.wp].fixed) bad.add(sp.wp); });
+      if (!bad.size) break;
+      let nxt;
+      if (!moved) {
+        moved = true;
+        const c = { lat: cur.reduce((a, p) => a + p.lat, 0) / cur.length, lng: cur.reduce((a, p) => a + p.lng, 0) / cur.length };
+        nxt = cur.map((p, i) => bad.has(i) ? { lat: p.lat + (c.lat - p.lat) * 0.35, lng: p.lng + (c.lng - p.lng) * 0.35 } : p);
+      } else {
+        if (cur.length - bad.size < (minPts || 3)) break;
+        nxt = cur.filter((_, i) => !bad.has(i));
+      }
       await sleep(CONFIG.delayMs);
-      try { r = await fetchBRouter(nxt, profile, alt, extra); cur = nxt; removed += drop.size; }
-      catch (e) { break; }
+      try { r = await fetchBRouter(nxt, profile, alt, extra); removed += cur.length - nxt.length; cur = nxt; }
+      catch (e) { if (e.fatal) throw e; break; }
     }
     return { r, points: cur, removed };
   }
@@ -1307,6 +1401,7 @@
         try { r = await fetchBRouter(pts, v.profile, 0, extra); }
         catch (e) {
           if (myRun !== runId) return null;
+          if (e.fatal) throw e;
           if (!best && !e.transient && !/^No se pudo contactar/.test(e.message) && it < iters - 1) {   // punto en una «isla» de caminos, mar…: se gira y se reduce
             v.offset = (v.offset || 0) + 25; radius = Math.max(0.8, radius * 0.9);
             await sleep(CONFIG.delayMs);
@@ -1375,7 +1470,7 @@
         }
       } catch (e) {
         if (myRun !== runId) return null;
-        if (/^No se pudo contactar/.test(e.message)) throw e;                     // sin red
+        if (e.fatal || /^No se pudo contactar/.test(e.message)) throw e;          // sin red o clave rechazada
         if (e.transient && !retried) { retried = true; setStatus('BRouter está saturado: espero 15 s y sigo explorando…'); await sleep(15000); k--; continue; }
       }                                                   // rumbo imposible (mar, sin caminos) o servidor saturado de nuevo: se descarta
       if (k < B.length - 1) await sleep(CONFIG.delayMs);
@@ -1430,7 +1525,7 @@
 
     const myRun = ++runId;                                // cancela un cálculo anterior en curso; las rutas ya calculadas se conservan
     const t0 = Date.now(), req0 = stats.req;
-    const took = () => (stats.req - req0) + ' peticiones a BRouter en ' + Math.round((Date.now() - t0) / 1000) + ' s';
+    const took = () => (stats.req - req0) + ' peticiones a ' + ($('engine').value === 'ors' ? 'OpenRouteService' : 'BRouter') + ' en ' + Math.round((Date.now() - t0) / 1000) + ' s';
     const batch = ++state.batch, firstNew = state.routes.length;
     const btn = $('btnRoute');
     btn.disabled = true;
@@ -1509,7 +1604,7 @@
         }
       } catch (e) {
         if (myRun !== runId) return;
-        if (/^No se pudo contactar/.test(e.message)) { failed.push({ v, e }); break; }   // sin red: no se insiste
+        if (e.fatal || /^No se pudo contactar/.test(e.message)) { failed.push({ v, e }); break; }   // sin red o clave rechazada: no se insiste
         if (e.transient && !v._retried) {                 // servidor saturado: se espera y se repite esta variante una vez
           v._retried = true; setStatus('BRouter está saturado: espero 15 s y sigo con la variante ' + (i + 1) + '…');
           await sleep(15000); if (myRun !== runId) return; i--; continue;
@@ -1544,7 +1639,7 @@
     if (!added && failed.length) {                        // nada calculado: se explica el motivo
       const e = failed[0].e;
       if (e.transient) { setStatus(e.message + BUSY_MSG, true, e.url); return; }
-      if (e.ferry) { setStatus(e.message, true, e.url); return; }
+      if (e.ferry || e.fatal || /^ors:/.test(setup.profile)) { setStatus(e.message, true, e.url); return; }
       if (/^custom/.test(setup.profile)) forgetProfile(setup.profile);
       setStatus(e.message + '\nDiagnosticando…', true, e.url);
       const dg = await diagnose(failed[0].v.profile, extra);
@@ -1566,7 +1661,7 @@
     if (cands.length) notes.push('Evaluadas ' + (cands.length + skipped) + ' candidatas; se muestran las ' + Math.min(nWanted, cands.length) + ' mejores: primero las que cumplen distancia y desnivel, luego las de menos tráfico (' +
       cands.slice(0, nWanted).map(c => Math.round(c.traffic) + ' %').join(', ') + ').');
     if (setup.fellBack) notes.push('No se pudo usar el perfil «' + setup.wanted + '»' + (setup.reason ? ' (' + setup.reason + ')' : '') + '. Se ha usado «' + setup.profile + '».');
-    if (setup.roadOff) notes.push('BRouter no aceptó los ajustes de «Evitar carreteras»; se ha calculado sin ellos.');
+    if (setup.roadOff) notes.push('BRouter no aceptó los ajustes de «Evitar carreteras» con el perfil «' + (/^custom/.test(setup.profile) ? 'MTB' : setup.profile) + '»; se ha calculado sin ellos.' + (setup.roadWhy ? ' Motivo: ' + setup.roadWhy.slice(0, 220) : ''));
     if (spursTotal) notes.push('Se han descartado ' + spursTotal + ' punto(s) auxiliar(es) que obligaban a ir y volver por el mismo camino (ramales sin salida).');
     if (dropped) notes.push(dropped + ' variante(s) descartada(s) por ir y volver por el mismo camino.');
     if (skipped) notes.push(skipped + ' variante(s) idéntica(s) a otra omitida(s).');
@@ -3259,6 +3354,13 @@
     rsz = setTimeout(() => { map.invalidateSize(); const r = selRoute(); if (r) drawProfile(r); }, 150);
   });
 
+  // ---------- Motor de cálculo (BRouter / OpenRouteService) ----------
+  const ORS_KEY_STORE = 'rutasMtb.orsKey.v1';
+  function applyEngine() { $('orsBox').style.display = $('engine').value === 'ors' ? '' : 'none'; }
+  $('engine').addEventListener('change', () => { applyEngine(); save(); });
+  $('orsKey').addEventListener('input', () => { try { localStorage.setItem(ORS_KEY_STORE, $('orsKey').value.trim()); } catch (e) { /* sin almacenamiento */ } });
+  try { $('orsKey').value = localStorage.getItem(ORS_KEY_STORE) || ''; } catch (e) { /* sin almacenamiento */ }
+
   // ---------- Persistencia local ----------
   function save() {
     try {
@@ -3267,7 +3369,7 @@
         base: baseSel.value,
         view: { c: map.getCenter(), z: map.getZoom() },
         dist: $('dist').value, prio: $('prio').value, bearing: $('bearing').value, sense: $('sense').value,
-        level: $('level').value, avoidRoads: $('avoidRoads').value, variety: $('variety').value, search: $('search').value, profile: $('profile').value, extra: $('extra').value, nAlt: $('nAlt').value,
+        level: $('level').value, engine: $('engine').value, avoidRoads: $('avoidRoads').value, variety: $('variety').value, search: $('search').value, profile: $('profile').value, extra: $('extra').value, nAlt: $('nAlt').value,
         ascent: $('ascent').value, ascentMode: $('ascentMode').value,
         slopeThr: $('slopeThr').value, demAuto: $('demAuto').checked
       }));
@@ -3290,6 +3392,7 @@
       if (d.profile) $('profile').value = d.profile;
       if (d.extra) $('extra').value = d.extra;
       if (d.level && ($('level').querySelector('option[value="' + d.level + '"]'))) $('level').value = d.level;
+      if (d.engine === 'ors' || d.engine === 'brouter') { $('engine').value = d.engine; applyEngine(); }
       if (d.variety && $('variety').querySelector('option[value="' + d.variety + '"]')) $('variety').value = d.variety;
       if (d.nAlt) $('nAlt').value = d.nAlt;
       if (d.ascent) $('ascent').value = d.ascent;
