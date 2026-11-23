@@ -363,7 +363,7 @@
   }
 
   // ---------- Configuración ----------
-  const APP_VERSION = '2026-11-13 · v11';
+  const APP_VERSION = '2026-11-23 · v12';
   const CONFIG = {
     center: [36.7213, -4.4214],            // Málaga
     zoom: 11,
@@ -1054,6 +1054,122 @@
   let runId = 0;                                        // invalida cálculos en curso
   const copyPt = p => (p.fixed ? { lat: p.lat, lng: p.lng, fixed: true } : { lat: p.lat, lng: p.lng });   // fixed: «Pasar por» (no se elimina nunca)
 
+  // ---------- Caminos aprendidos (de salidas reales en bici) ----------
+  // caminos-mtb.json: red de celdas de ~40 m por las que se ha pasado en bici y en cuántas salidas (sin rutas, fechas ni horas).
+  // Uso: los puntos auxiliares del circuito se colocan sobre esos caminos y se prefieren las variantes que más los recorren.
+  // Los tramos que BRouter identifica como carretera se van marcando como «no camino» y se guardan en el dispositivo.
+  const KNOWN = { url: 'caminos-mtb.json', ready: false, cells: null, n: 0, dlat: 0, dlon: 0, road: new Set(), roadKey: 'rutasMtb.roadCells.v1', roadDirty: false };
+  const kKey = (i, j) => i * 100000 + (j + 50000);
+  const kCellOf = (lat, lng) => kKey(Math.round(lat / KNOWN.dlat), Math.round(lng / KNOWN.dlon));
+  const kCount = key => (KNOWN.road.has(key) ? 0 : (KNOWN.cells.get(key) || 0));
+  function kNear(lat, lng) {                            // máximo en la celda y sus 8 vecinas (absorbe el error del GPS)
+    const i0 = Math.round(lat / KNOWN.dlat), j0 = Math.round(lng / KNOWN.dlon);
+    let m = 0;
+    for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) m = Math.max(m, kCount(kKey(i0 + di, j0 + dj)));
+    return m;
+  }
+  async function loadKnown() {
+    try { const a = JSON.parse(localStorage.getItem(KNOWN.roadKey) || '[]'); if (Array.isArray(a)) a.forEach(k => KNOWN.road.add(k)); } catch (e) { /* sin almacenamiento */ }
+    try {
+      const resp = await fetch(KNOWN.url, { cache: 'no-cache' });
+      if (!resp.ok) return;
+      const j = await resp.json();
+      const bin = atob(j.cells), b = new Uint8Array(bin.length);
+      for (let k = 0; k < bin.length; k++) b[k] = bin.charCodeAt(k);
+      let p = 0;
+      const varint = () => { let v = 0, sh = 0, x; do { x = b[p++]; v += (x & 0x7f) * Math.pow(2, sh); sh += 7; } while (x & 0x80); return v; };
+      const unzz = v => (v % 2 ? -(v + 1) / 2 : v / 2);
+      const m = new Map(); let i = 0, jj = 0;
+      while (p < b.length) {
+        const di = unzz(varint()), dj = unzz(varint()), c = b[p++];
+        if (di !== 0) { i += di; jj = dj; } else jj += dj;
+        m.set(kKey(i, jj), c);
+      }
+      KNOWN.cells = m; KNOWN.n = m.size; KNOWN.dlat = j.dlat; KNOWN.dlon = j.dlon; KNOWN.ready = m.size > 0;
+    } catch (e) { /* sin archivo (p. ej. abierto como archivo local): la app funciona como antes */ }
+  }
+  loadKnown();
+
+  // Lleva un punto al camino aprendido más cercano (prefiere los más repetidos) dentro de maxM metros
+  function snapPoint(p, maxM) {
+    if (!KNOWN.ready || p.fixed) return p;
+    const i0 = Math.round(p.lat / KNOWN.dlat), j0 = Math.round(p.lng / KNOWN.dlon);
+    const mi = Math.ceil(maxM / (KNOWN.dlat * 111320)), mj = Math.ceil(maxM / (KNOWN.dlon * 111320 * Math.cos(p.lat * Math.PI / 180)));
+    let best = null, bs = -Infinity;
+    for (let di = -mi; di <= mi; di++) for (let dj = -mj; dj <= mj; dj++) {
+      const c = kCount(kKey(i0 + di, j0 + dj));
+      if (c < 2) continue;                              // un camino pisado una sola vez puede ser un error de GPS
+      const lat = (i0 + di) * KNOWN.dlat, lng = (j0 + dj) * KNOWN.dlon;
+      const d = haversineKm(p, { lat, lng }) * 1000;
+      if (d > maxM) continue;
+      const sc = Math.log(1 + Math.min(c, 20)) - 1.6 * d / maxM;
+      if (sc > bs) { bs = sc; best = { lat, lng }; }
+    }
+    return best || p;
+  }
+  function snapAux(pts, radiusKm) {
+    if (!KNOWN.ready) return pts;
+    const maxM = Math.max(250, Math.min(900, (radiusKm || 2) * 1000 * 0.3));
+    return pts.map((p, i) => (i === 0 || i === pts.length - 1 || p.fixed) ? p : snapPoint(p, maxM));
+  }
+
+  // Etiqueta de vía para cada coordenada de la ruta (a partir de la tabla de tramos y su distancia acumulada)
+  function coordTags(res) {
+    const m = res.messages;
+    if (!m || m.length < 2) return null;
+    const h = m[0], iD = h.indexOf('Distance'), iW = h.indexOf('WayTags');
+    if (iD < 0 || iW < 0) return null;
+    const ends = [], tags = [];
+    let acc = 0;
+    for (let r = 1; r < m.length; r++) {
+      const d = parseFloat(m[r][iD]); if (!isFinite(d) || d <= 0) continue;
+      acc += d; ends.push(acc);
+      const hw = (/(?:^|\s)highway=([^\s]+)/.exec(m[r][iW] || '') || [])[1] || '';
+      tags.push(hw);
+    }
+    const c = res.coords, out = new Array(c.length).fill('');
+    let cum = 0, k = 0;
+    for (let i = 0; i < c.length; i++) {
+      if (i > 0) cum += haversineKm({ lat: c[i - 1][1], lng: c[i - 1][0] }, { lat: c[i][1], lng: c[i][0] }) * 1000;
+      while (k < ends.length - 1 && cum > ends[k]) k++;
+      out[i] = tags[k] || '';
+    }
+    return out;
+  }
+  // Aprende carreteras: celdas aprendidas que la ruta recorre por una vía con tráfico dejan de contar como camino
+  function learnRoads(res) {
+    if (!KNOWN.ready || !res || res._roadLearned) return;
+    res._roadLearned = true;
+    const t = coordTags(res); if (!t) return;
+    const c = res.coords;
+    for (let i = 0; i < c.length; i++) {
+      if (!TRAFFIC.has(t[i])) continue;
+      const key = kCellOf(c[i][1], c[i][0]);
+      if (KNOWN.cells.has(key) && !KNOWN.road.has(key)) { KNOWN.road.add(key); KNOWN.roadDirty = true; }
+    }
+    if (KNOWN.roadDirty) {
+      KNOWN.roadDirty = false;
+      try { localStorage.setItem(KNOWN.roadKey, JSON.stringify([...KNOWN.road].slice(-40000))); } catch (e) { /* sin espacio */ }
+    }
+  }
+  // Parte de la ruta (0..1) que va por caminos aprendidos (sin contar tramos con tráfico)
+  function knownShare(res) {
+    if (!KNOWN.ready || !res || !res.coords) return null;
+    if (res._known !== undefined) return res._known;
+    learnRoads(res);
+    const t = coordTags(res), c = res.coords;
+    let tot = 0, on = 0;
+    for (let i = 1; i < c.length; i++) {
+      const d = haversineKm({ lat: c[i - 1][1], lng: c[i - 1][0] }, { lat: c[i][1], lng: c[i][0] });
+      tot += d;
+      if (t && TRAFFIC.has(t[i])) continue;
+      if (kNear(c[i][1], c[i][0]) > 0) on += d;
+    }
+    return (res._known = tot > 0 ? on / tot : 0);
+  }
+
+
+
   function invalidateRoutes() {
     runId++;
     routesGroup.clearLayers();
@@ -1124,7 +1240,7 @@
       if (V.perp && (i > 0 || state.batch > 1)) {            // desvío lateral aleatorio: fuerza otro recorrido
         const t = rnd(0.3, 0.7), side = Math.random() < 0.5 ? 90 : -90, m = rnd(V.perp * 0.4, V.perp) * dAB;
         const mid = { lat: A.lat + (B.lat - A.lat) * t, lng: A.lng + (B.lng - A.lng) * t };
-        pts = [A, destination(mid, brg + side, m), B];
+        pts = snapAux([A, destination(mid, brg + side, m), B], m);
         alt = 0; tag = ' · desvío ' + (side > 0 ? 'dcha.' : 'izq.');
       }
       out.push({
@@ -1410,7 +1526,7 @@
       if (it === 0 && v.seed) { r = v.seed.r; pts = v.seed.points.map(copyPt); }   // ruta ya calculada al explorar direcciones
       else {
         const w = circularWaypoints(state.start, p, v.offset);
-        pts = [state.start, ...w.aux, state.start].map(copyPt);
+        pts = snapAux([state.start, ...w.aux, state.start].map(copyPt), radius);
         setStatus('Calculando ' + (idx + 1) + ' de ' + total + ' · ajuste a ' + Math.round(D) + ' km' + (c ? ' y ' + c.value + ' m' : '') + ' (intento ' + (it + 1) + ')…');
         try { r = await fetchBRouter(pts, v.profile, 0, extra); }
         catch (e) {
@@ -1473,7 +1589,7 @@
       if (k >= 3 && out.length && overBudget()) break;
       const b = B[k] + rnd(-15, 15);
       const w = circularWaypoints(state.start, p0, b);
-      const pts = [state.start, ...w.aux, state.start].map(copyPt);
+      const pts = snapAux([state.start, ...w.aux, state.start].map(copyPt), p0.radius);
       setStatus('Explorando direcciones para ' + A + ' m de desnivel: ' + (k + 1) + ' de ' + B.length + ' (hacia ' + compass(w.bearing) + ')…');
       try {
         const r = await fetchBRouter(pts, profile, 0, extra);
@@ -1482,7 +1598,8 @@
         if (a !== null && len > 0) {
           const SS = getSurface(r), tr = SS && SS.total ? SS.traffic / SS.total * 100 : 0;
           const sp = findSpur(r.coords, 120, pts) ? 1 : 0;
-          out.push({ b, w, r, pts, p: p0, rate: a / len, score: Math.abs(a * D / len - A) / A + tr / 100 + sp });   // desnivel previsto a la distancia pedida
+          const ks = knownShare(r) || 0;
+          out.push({ b, w, r, pts, p: p0, rate: a / len, score: Math.abs(a * D / len - A) / A + tr / 100 + sp - 0.3 * ks });   // desnivel previsto a la distancia pedida; premia caminos conocidos
         }
       } catch (e) {
         if (myRun !== runId) return null;
@@ -1614,7 +1731,7 @@
           const SS = getSurface(r), traffic = SS ? SS.traffic / SS.total * 100 : 50;
           const okAsc = constraint ? ascentOk(ascentOf(r), constraint) : true;
           const spur = findSpur(r.coords, 120, points);
-          cands.push({ v, r, points, params, traffic, spur: !!spur, good: okAsc !== false && fitOk !== false && !spur && traffic <= 25, score: traffic + (okAsc === false ? 60 : 0) + (fitOk === false ? 60 : 0) + (spur ? 100 : 0) });
+          cands.push({ v, r, points, params, traffic, spur: !!spur, good: okAsc !== false && fitOk !== false && !spur && traffic <= 25, score: traffic + (okAsc === false ? 60 : 0) + (fitOk === false ? 60 : 0) + (spur ? 100 : 0) - 20 * (knownShare(r) || 0) });
         } else {
           addRoute(v, r, points, params);
           renderRoutes();
@@ -1675,6 +1792,7 @@
           : 'El terreno lo permite (' + lo + '–' + hi + ' m según la dirección), pero no se ha logrado en los intentos: vuelve a calcular.') +
         ' Se muestra la mejor aproximación.');
     }
+    notes.push(KNOWN.ready ? 'Caminos aprendidos: ' + KNOWN.n.toLocaleString('es-ES') + ' tramos (' + KNOWN.road.size.toLocaleString('es-ES') + ' ya identificados como carretera).' : 'Caminos aprendidos: no disponibles (abre la app desde su dirección web).');
     notes.push('Cálculo: ' + took() + '. Versión ' + APP_VERSION + '.');
     if (cands.length) notes.push('Evaluadas ' + (cands.length + skipped) + ' candidatas; se muestran las ' + Math.min(nWanted, cands.length) + ' mejores: primero las que cumplen distancia y desnivel, luego las de menos tráfico (' +
       cands.slice(0, nWanted).map(c => Math.round(c.traffic) + ' %').join(', ') + ').');
@@ -1748,6 +1866,8 @@
       }
       const SS = getSurface(r.result);
       if (SS) { const t = trafficLevel(SS); cons += '<div class="s" style="color:' + t.color + '">🚗 ' + t.pct.toFixed(0) + ' % vías con tráfico</div>'; }
+      const ks = knownShare(r.result);
+      if (ks !== null) cons += '<div class="s" style="color:' + (ks >= 0.5 ? '#2f7d32' : ks >= 0.2 ? '#b26a00' : 'var(--muted)') + '">🧭 ' + Math.round(ks * 100) + ' % por caminos conocidos</div>';
       if (spurOf(r)) cons += '<div class="s" style="color:var(--err)">⚠ Tiene una entrada y salida por el mismo camino</div>';
       d.innerHTML = '<span class="swatch" style="background:' + r.color + '"></span><div><div class="t">' + r.label + '</div>' +
         '<div class="d"><b>' + r.result.lengthKm.toFixed(1) + ' km</b>' +
